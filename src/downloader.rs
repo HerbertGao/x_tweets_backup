@@ -10,10 +10,10 @@ use std::time::Duration;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use url::Url;
-use chrono::DateTime;
 use filetime::{FileTime, set_file_times};
 
 use crate::config::Config;
+use crate::tweet_parser;
 
 // 调试日志辅助宏
 macro_rules! debug_log {
@@ -129,19 +129,20 @@ impl Downloader {
         debug_log!(self.config, "[DEBUG] 开始处理推文: {}", tweet_id);
         
         // 从 tweet 对象中抽取推文主体
-        let tweet_obj = self.extract_tweet_object(tweet)?;
-        if tweet_obj.is_none() {
-            debug_log!(self.config, "[DEBUG] 推文 {} 没有有效内容", tweet_id);
-            return Ok(None);
-        }
-        let tweet_obj = tweet_obj.unwrap();
+        let tweet_obj = match tweet_parser::extract_tweet_object(tweet) {
+            Some(obj) => obj,
+            None => {
+                debug_log!(self.config, "[DEBUG] 推文 {} 没有有效内容", tweet_id);
+                return Ok(None);
+            }
+        };
 
         // 提取推文发布时间
-        let tweet_timestamp = self.extract_tweet_timestamp(&tweet_obj)?;
+        let tweet_timestamp = tweet_parser::extract_tweet_timestamp_seconds(&tweet_obj)?;
         debug_log!(self.config, "[DEBUG] 推文 {} 发布时间: {:?}", tweet_id, tweet_timestamp);
 
         // 提取作者用户名（作为后备）
-        let tweet_author_username = self.extract_username(&tweet_obj)?;
+        let tweet_author_username = tweet_parser::extract_username(&tweet_obj)?;
         debug_log!(self.config, "[DEBUG] 推文 {} 作者: {:?}", tweet_id, tweet_author_username);
 
         // 优先使用配置中的目标用户名，如果没有则使用推文作者的用户名
@@ -153,7 +154,7 @@ impl Downloader {
         debug_log!(self.config, "[DEBUG] 推文 {} 将使用用户名: {:?}", tweet_id, username);
 
         // 提取媒体列表
-        let media_urls = self.extract_media_urls(&tweet_obj)?;
+        let media_urls = tweet_parser::extract_media_urls(&tweet_obj)?;
         if media_urls.is_empty() {
             debug_log!(self.config, "[DEBUG] 推文 {} 没有媒体文件", tweet_id);
             return Ok(None);
@@ -261,135 +262,6 @@ impl Downloader {
         }
     }
 
-    fn extract_tweet_object<'a>(&self, tweet: &'a Value) -> Result<Option<&'a Value>> {
-        // 路径1: content.itemContent.tweet_results.result.tweet
-        if let Some(tweet_obj) = tweet
-            .get("content")
-            .and_then(|c| c.get("itemContent"))
-            .and_then(|ic| ic.get("tweet_results"))
-            .and_then(|tr| tr.get("result"))
-            .and_then(|r| r.get("tweet"))
-        {
-            return Ok(Some(tweet_obj));
-        }
-
-        // 路径2: 直接结构
-        if let Some(tweet_obj) = tweet.get("tweet") {
-            return Ok(Some(tweet_obj));
-        }
-
-        // 路径3: 使用原始tweet
-        Ok(Some(tweet))
-    }
-
-    fn extract_username(&self, tweet_obj: &Value) -> Result<Option<String>> {
-        // 尝试从core.user_results.result.legacy路径提取（主要路径）
-        let mut username = tweet_obj
-            .get("core")
-            .and_then(|c| c.get("user_results"))
-            .and_then(|ur| ur.get("result"))
-            .and_then(|r| r.get("legacy"))
-            .and_then(|l| l.get("screen_name"))
-            .and_then(|s| s.as_str())
-            .map(|s| s.to_string());
-
-        // 如果旧路径没有找到，尝试直接从core路径提取
-        if username.is_none() {
-            username = tweet_obj
-                .get("core")
-                .and_then(|c| c.get("screen_name"))
-                .and_then(|s| s.as_str())
-                .map(|s| s.to_string());
-        }
-
-        // 如果还是没有找到，尝试从user_results.result.core路径提取
-        if username.is_none() {
-            username = tweet_obj
-                .get("core")
-                .and_then(|c| c.get("user_results"))
-                .and_then(|ur| ur.get("result"))
-                .and_then(|r| r.get("core"))
-                .and_then(|c| c.get("screen_name"))
-                .and_then(|s| s.as_str())
-                .map(|s| s.to_string());
-        }
-
-        Ok(username)
-    }
-
-    fn extract_media_urls(&self, tweet_obj: &Value) -> Result<Vec<String>> {
-        let mut media_urls = Vec::new();
-
-        let legacy = tweet_obj.get("legacy").unwrap_or(&Value::Null);
-        
-        // 从 extended_entities 或 entities 中提取媒体列表
-        let media_list = legacy
-            .get("extended_entities")
-            .and_then(|ee| ee.get("media"))
-            .and_then(|m| m.as_array())
-            .or_else(|| {
-                legacy
-                    .get("entities")
-                    .and_then(|e| e.get("media"))
-                    .and_then(|m| m.as_array())
-            });
-
-        if let Some(media_array) = media_list {
-            for media in media_array {
-                let media_type = media.get("type").and_then(|t| t.as_str()).unwrap_or("");
-                
-                match media_type {
-                    "video" => {
-                        if let Some(video_info) = media.get("video_info") {
-                            if let Some(variants) = video_info.get("variants").and_then(|v| v.as_array()) {
-                                let best_variant = variants
-                                    .iter()
-                                    .filter(|v| v.get("bitrate").is_some())
-                                    .max_by_key(|v| v.get("bitrate").and_then(|b| b.as_u64()).unwrap_or(0));
-                                
-                                if let Some(variant) = best_variant {
-                                    if let Some(url) = variant.get("url").and_then(|u| u.as_str()) {
-                                        media_urls.push(url.to_string());
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    "photo" => {
-                        if let Some(url) = media.get("media_url_https").and_then(|u| u.as_str()) {
-                            media_urls.push(url.to_string());
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        Ok(media_urls)
-    }
-
-    fn extract_tweet_timestamp(&self, tweet_obj: &Value) -> Result<Option<i64>> {
-        let legacy = tweet_obj.get("legacy").unwrap_or(&Value::Null);
-
-        // 尝试 created_at_ms （毫秒时间戳）
-        if let Some(ts_ms_str) = legacy.get("created_at_ms").and_then(|v| v.as_str()) {
-            if let Ok(ts_ms) = ts_ms_str.parse::<i64>() {
-                return Ok(Some(ts_ms / 1000));
-            }
-        }
-        if let Some(ts_ms) = legacy.get("created_at_ms").and_then(|v| v.as_i64()) {
-            return Ok(Some(ts_ms / 1000));
-        }
-
-        // 尝试 created_at 字符串，如 "Thu Apr 06 15:24:15 +0000 2017"
-        if let Some(created_at_str) = legacy.get("created_at").and_then(|v| v.as_str()) {
-            if let Ok(dt) = DateTime::parse_from_str(created_at_str, "%a %b %d %H:%M:%S %z %Y") {
-                return Ok(Some(dt.timestamp()));
-            }
-        }
-
-        Ok(None)
-    }
 
     async fn download_media(&self, url: &str, out_path: &Path, current: usize, total: usize) -> Result<bool> {
         debug_log!(self.config, "[DEBUG] 发送下载请求: {}", url);
@@ -454,6 +326,7 @@ impl Downloader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tweet_parser;
     use serde_json::json;
     use tempfile::TempDir;
 
@@ -529,7 +402,8 @@ mod tests {
             }
         });
         
-        let result = downloader.extract_tweet_object(&tweet).unwrap();
+        let result = tweet_parser::extract_tweet_object(&tweet);
+        assert!(result.is_some());
         assert_eq!(result.unwrap().get("rest_id").and_then(|v| v.as_str()), Some("123"));
     }
 
@@ -544,7 +418,7 @@ mod tests {
             }
         });
         
-        let result = downloader.extract_tweet_object(&tweet).unwrap();
+        let result = tweet_parser::extract_tweet_object(&tweet).unwrap();
         assert_eq!(result.unwrap().get("rest_id").and_then(|v| v.as_str()), Some("456"));
     }
 
@@ -557,7 +431,7 @@ mod tests {
             "rest_id": "789"
         });
         
-        let result = downloader.extract_tweet_object(&tweet).unwrap();
+        let result = tweet_parser::extract_tweet_object(&tweet).unwrap();
         assert_eq!(result.unwrap().get("rest_id").and_then(|v| v.as_str()), Some("789"));
     }
 
@@ -578,7 +452,7 @@ mod tests {
             }
         });
         
-        let result = downloader.extract_username(&tweet_obj).unwrap();
+        let result = tweet_parser::extract_username(&tweet_obj).unwrap();
         assert_eq!(result, Some("test_user".to_string()));
     }
 
@@ -600,7 +474,7 @@ mod tests {
             }
         });
         
-        let result = downloader.extract_media_urls(&tweet_obj).unwrap();
+        let result = tweet_parser::extract_media_urls(&tweet_obj).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], "https://example.com/image.jpg");
     }
@@ -634,7 +508,7 @@ mod tests {
             }
         });
         
-        let result = downloader.extract_media_urls(&tweet_obj).unwrap();
+        let result = tweet_parser::extract_media_urls(&tweet_obj).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], "https://example.com/video_hd.mp4");
     }
@@ -648,7 +522,7 @@ mod tests {
             "legacy": {}
         });
         
-        let result = downloader.extract_media_urls(&tweet_obj).unwrap();
+        let result = tweet_parser::extract_media_urls(&tweet_obj).unwrap();
         assert!(result.is_empty());
     }
 
@@ -663,7 +537,7 @@ mod tests {
             }
         });
         
-        let result = downloader.extract_tweet_timestamp(&tweet_obj).unwrap();
+        let result = tweet_parser::extract_tweet_timestamp_seconds(&tweet_obj).unwrap();
         assert!(result.is_some());
     }
 
@@ -678,7 +552,7 @@ mod tests {
             }
         });
         
-        let result = downloader.extract_tweet_timestamp(&tweet_obj).unwrap();
+        let result = tweet_parser::extract_tweet_timestamp_seconds(&tweet_obj).unwrap();
         assert!(result.is_some());
     }
 
@@ -741,7 +615,7 @@ mod tests {
             }
         });
         
-        let result = downloader.extract_username(&tweet_obj).unwrap();
+        let result = tweet_parser::extract_username(&tweet_obj).unwrap();
         assert_eq!(result, Some("direct_user".to_string()));
     }
 
@@ -762,7 +636,7 @@ mod tests {
             }
         });
         
-        let result = downloader.extract_username(&tweet_obj).unwrap();
+        let result = tweet_parser::extract_username(&tweet_obj).unwrap();
         assert_eq!(result, Some("alt_user".to_string()));
     }
 
@@ -773,7 +647,7 @@ mod tests {
         
         let tweet_obj = json!({});
         
-        let result = downloader.extract_username(&tweet_obj).unwrap();
+        let result = tweet_parser::extract_username(&tweet_obj).unwrap();
         assert_eq!(result, None);
     }
 
@@ -795,7 +669,7 @@ mod tests {
             }
         });
         
-        let result = downloader.extract_media_urls(&tweet_obj).unwrap();
+        let result = tweet_parser::extract_media_urls(&tweet_obj).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], "https://example.com/entity_image.jpg");
     }
@@ -824,7 +698,7 @@ mod tests {
             }
         });
         
-        let result = downloader.extract_media_urls(&tweet_obj).unwrap();
+        let result = tweet_parser::extract_media_urls(&tweet_obj).unwrap();
         // 没有bitrate的variant不会被选择
         assert_eq!(result.len(), 0);
     }
@@ -847,7 +721,7 @@ mod tests {
             }
         });
         
-        let result = downloader.extract_media_urls(&tweet_obj).unwrap();
+        let result = tweet_parser::extract_media_urls(&tweet_obj).unwrap();
         assert_eq!(result.len(), 0);
     }
 
@@ -862,7 +736,7 @@ mod tests {
             }
         });
         
-        let result = downloader.extract_tweet_timestamp(&tweet_obj).unwrap();
+        let result = tweet_parser::extract_tweet_timestamp_seconds(&tweet_obj).unwrap();
         assert!(result.is_some());
     }
 
@@ -875,7 +749,7 @@ mod tests {
             "legacy": {}
         });
         
-        let result = downloader.extract_tweet_timestamp(&tweet_obj).unwrap();
+        let result = tweet_parser::extract_tweet_timestamp_seconds(&tweet_obj).unwrap();
         assert!(result.is_none());
     }
 
@@ -925,7 +799,7 @@ mod tests {
                 }
             }
         });
-        assert_eq!(downloader.extract_tweet_object(&tweet1).unwrap().unwrap().get("rest_id").and_then(|v| v.as_str()), Some("path1"));
+        assert_eq!(tweet_parser::extract_tweet_object(&tweet1).unwrap().unwrap().get("rest_id").and_then(|v| v.as_str()), Some("path1"));
         
         // 测试路径2
         let tweet2 = json!({
@@ -933,13 +807,13 @@ mod tests {
                 "rest_id": "path2"
             }
         });
-        assert_eq!(downloader.extract_tweet_object(&tweet2).unwrap().unwrap().get("rest_id").and_then(|v| v.as_str()), Some("path2"));
+        assert_eq!(tweet_parser::extract_tweet_object(&tweet2).unwrap().unwrap().get("rest_id").and_then(|v| v.as_str()), Some("path2"));
         
         // 测试路径3
         let tweet3 = json!({
             "rest_id": "path3"
         });
-        assert_eq!(downloader.extract_tweet_object(&tweet3).unwrap().unwrap().get("rest_id").and_then(|v| v.as_str()), Some("path3"));
+        assert_eq!(tweet_parser::extract_tweet_object(&tweet3).unwrap().unwrap().get("rest_id").and_then(|v| v.as_str()), Some("path3"));
     }
 
     #[test]
@@ -975,7 +849,7 @@ mod tests {
             }
         });
         
-        let result = downloader.extract_media_urls(&tweet_obj).unwrap();
+        let result = tweet_parser::extract_media_urls(&tweet_obj).unwrap();
         assert_eq!(result.len(), 3);
         assert!(result.contains(&"https://example.com/photo1.jpg".to_string()));
         assert!(result.contains(&"https://example.com/video1.mp4".to_string()));
@@ -1015,7 +889,7 @@ mod tests {
             }
         });
         
-        let result = downloader.extract_media_urls(&tweet_obj).unwrap();
+        let result = tweet_parser::extract_media_urls(&tweet_obj).unwrap();
         assert_eq!(result.len(), 1);
         // 应该选择最高bitrate的
         assert_eq!(result[0], "https://example.com/high.mp4");
@@ -1032,7 +906,7 @@ mod tests {
             }
         });
         
-        let result = downloader.extract_tweet_timestamp(&tweet_obj).unwrap();
+        let result = tweet_parser::extract_tweet_timestamp_seconds(&tweet_obj).unwrap();
         // 无效格式应该返回None或尝试其他路径
         // 实际行为：会尝试数字格式，如果失败则尝试字符串格式
         assert!(result.is_none() || result.is_some());
@@ -1049,7 +923,7 @@ mod tests {
             }
         });
         
-        let result = downloader.extract_tweet_timestamp(&tweet_obj).unwrap();
+        let result = tweet_parser::extract_tweet_timestamp_seconds(&tweet_obj).unwrap();
         assert!(result.is_none());
     }
 
@@ -1096,7 +970,7 @@ mod tests {
             }
         });
         
-        let result = downloader.extract_media_urls(&tweet_obj).unwrap();
+        let result = tweet_parser::extract_media_urls(&tweet_obj).unwrap();
         assert_eq!(result.len(), 0);
     }
 
@@ -1118,7 +992,7 @@ mod tests {
             }
         });
         
-        let result = downloader.extract_media_urls(&tweet_obj).unwrap();
+        let result = tweet_parser::extract_media_urls(&tweet_obj).unwrap();
         assert_eq!(result.len(), 0);
     }
 
@@ -1147,7 +1021,7 @@ mod tests {
             }
         });
         
-        let result = downloader.extract_media_urls(&tweet_obj).unwrap();
+        let result = tweet_parser::extract_media_urls(&tweet_obj).unwrap();
         assert_eq!(result.len(), 0);
     }
 

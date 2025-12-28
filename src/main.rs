@@ -4,6 +4,7 @@ mod setup;
 mod updater;
 mod x_api;
 mod markdown_generator;
+mod tweet_parser;
 
 // 调试日志宏
 macro_rules! debug_log {

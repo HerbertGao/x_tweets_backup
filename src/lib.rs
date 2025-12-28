@@ -5,6 +5,7 @@ pub mod setup;
 pub mod updater;
 pub mod x_api;
 pub mod markdown_generator;
+pub mod tweet_parser;
 
 // 重新导出常用类型
 pub use config::Config;
