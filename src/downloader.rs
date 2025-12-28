@@ -34,7 +34,7 @@ impl Downloader {
     pub fn new(config: Config) -> Result<Self> {
         debug_log!(config, "[DEBUG] 初始化下载器...");
         let client_builder = reqwest::Client::builder()
-            .timeout(Duration::from_secs(30));
+            .timeout(Duration::from_secs(config.download_timeout_secs));
 
         let client = client_builder.build()?;
         let downloaded_ids = Self::load_downloaded_ids(&config.download_record)?;
@@ -195,9 +195,16 @@ impl Downloader {
                 continue;
             }
             
+            // 从URL路径提取文件名，并清理以防止路径遍历攻击
             let original_name = parsed_url.path_segments()
                 .and_then(|segments| segments.last())
-                .unwrap_or("unknown");
+                .unwrap_or("unknown")
+                .replace("..", "")  // 移除路径遍历序列
+                .replace("/", "_")  // 替换斜杠
+                .replace("\\", "_") // 替换反斜杠
+                .chars()
+                .filter(|c| c.is_alphanumeric() || *c == '.' || *c == '-' || *c == '_')
+                .collect::<String>();
             
             // 文件名格式：[username][tweetid][origin_filename]
             let filename = format!("{}[{}]", prefix, original_name);
@@ -231,6 +238,8 @@ impl Downloader {
                     if let Some(ts) = tweet_timestamp {
                         let ft = FileTime::from_unix_time(ts, 0);
                         if let Err(e) = set_file_times(&out_path, ft, ft) {
+                            // 记录警告，因为某些文件系统可能不支持时间修改
+                            eprintln!("[WARNING] 无法设置文件时间 {:?}: {} (某些文件系统可能不支持此操作)", out_path, e);
                             debug_log!(self.config, "[DEBUG] 设置文件时间失败 {:?}: {}", out_path, e);
                         } else {
                             debug_log!(self.config, "[DEBUG] 已设置文件时间: {:?}", out_path);

@@ -38,6 +38,13 @@ pub struct Config {
         // 调试配置
         pub debug_logs: bool,
 
+    // API 配置
+    pub user_by_screen_name_query_id: String,
+    pub user_tweets_query_id: String,
+    
+    // 性能配置
+    pub max_pages: usize,
+    pub download_timeout_secs: u64,
 }
 
 impl Config {
@@ -64,8 +71,14 @@ impl Config {
             download_record: env::var("DOWNLOAD_RECORD").unwrap_or_else(|_| "data/downloaded_tweet_ids.txt".to_string()),
             file_format: env::var("FILE_FORMAT").unwrap_or_else(|_| "{USERNAME} {ID}".to_string()),
             
-            // 目标用户配置
-            target_user_id: env::var("TARGET_USER_ID").unwrap_or_else(|_| "".to_string()),
+            // 目标用户配置（添加输入验证，防止注入攻击）
+            target_user_id: env::var("TARGET_USER_ID")
+                .unwrap_or_else(|_| "".to_string())
+                .trim()
+                .trim_start_matches('@')
+                .chars()
+                .filter(|c| c.is_alphanumeric() || *c == '_')
+                .collect(),
             target_username: "".to_string(),  // 将在运行时设置
             
             // 过滤配置
@@ -77,6 +90,22 @@ impl Config {
 
                 // 调试配置（默认关闭以保护敏感信息）
                 debug_logs: env::var("DEBUG_LOGS").unwrap_or_else(|_| "false".to_string()).to_lowercase() == "true",
+
+                // API 配置（GraphQL 查询 ID，如果 Twitter 更新 API 可以在这里修改）
+                user_by_screen_name_query_id: env::var("USER_BY_SCREEN_NAME_QUERY_ID")
+                    .unwrap_or_else(|_| "6ND0OKRCgPajU_yJbcWSVw".to_string()),
+                user_tweets_query_id: env::var("USER_TWEETS_QUERY_ID")
+                    .unwrap_or_else(|_| "V3vRrAJh5U6n9m1ZJ8xYQw".to_string()),
+                
+                // 性能配置
+                max_pages: env::var("MAX_PAGES")
+                    .unwrap_or_else(|_| "50".to_string())
+                    .parse()
+                    .unwrap_or(50),
+                download_timeout_secs: env::var("DOWNLOAD_TIMEOUT_SECS")
+                    .unwrap_or_else(|_| "30".to_string())
+                    .parse()
+                    .unwrap_or(30),
         })
     }
 

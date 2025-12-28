@@ -42,7 +42,8 @@ impl XApi {
         let fieldtoggles_encoded = urlencoding::encode(r#"{"withAuxiliaryUserLabels":true}"#);
 
         let url = format!(
-            "https://x.com/i/api/graphql/6ND0OKRCgPajU_yJbcWSVw/UserByScreenName?variables={}&features={}&fieldToggles={}",
+            "https://x.com/i/api/graphql/{}/UserByScreenName?variables={}&features={}&fieldToggles={}",
+            self.config.user_by_screen_name_query_id,
             variables_encoded, features_encoded, fieldtoggles_encoded
         );
 
@@ -81,7 +82,12 @@ impl XApi {
             // 错误信息始终记录，但不包含敏感数据
             eprintln!("[ERROR] 查询用户信息失败: {} (状态码: {})", clean_username, status);
             debug_log!(self.config, "[DEBUG] 错误响应内容: {}", text);
-            return Err(anyhow::anyhow!("查询用户信息失败: {} {}", status, text));
+            // 只在调试模式下包含完整响应，生产环境只返回状态码
+            if self.config.debug_logs {
+                return Err(anyhow::anyhow!("查询用户信息失败: {} (状态码: {}) - {}", clean_username, status, text));
+            } else {
+                return Err(anyhow::anyhow!("查询用户信息失败: {} (状态码: {})", clean_username, status));
+            }
         }
 
         let data: Value = response.json().await?;
@@ -106,16 +112,16 @@ impl XApi {
         let mut cursor: Option<String> = None;
         let mut page_count = 0;
         let mut seen_tweet_ids = std::collections::HashSet::new(); // 记录已见过的推文ID
-        const MAX_PAGES: usize = 50; // 防止无限循环的最大页数
+        // 使用配置中的最大页数，防止无限循环
 
         loop {
             page_count += 1;
             debug_log!(self.config, "[DEBUG] 开始获取第 {} 页数据", page_count);
             
             // 防止无限循环
-            if page_count > MAX_PAGES {
-                eprintln!("[WARNING] 已达到最大页数限制 ({}), 停止分页。这可能是由于分页逻辑问题导致的。", MAX_PAGES);
-                debug_log!(self.config, "[DEBUG] 已达到最大页数限制 ({}), 停止分页", MAX_PAGES);
+            if page_count > self.config.max_pages {
+                eprintln!("[WARNING] 已达到最大页数限制 ({}), 停止分页。这可能是由于分页逻辑问题导致的。", self.config.max_pages);
+                debug_log!(self.config, "[DEBUG] 已达到最大页数限制 ({}), 停止分页", self.config.max_pages);
                 break;
             }
             // 使用指定的目标用户ID，如果没有指定则使用当前认证用户ID
@@ -144,7 +150,8 @@ impl XApi {
             let fieldtoggles_encoded = urlencoding::encode(r#"{"withArticlePlainText":false}"#);
 
             let url = format!(
-                "https://x.com/i/api/graphql/Z15UW_bggbnuLrrt0-jOGA/UserTweets?variables={}&features={}&fieldToggles={}",
+                "https://x.com/i/api/graphql/{}/self.config.user_tweets_query_id,
+                variables_encoded, features_encoded, fieldtoggles_encoded/UserTweets?variables={}&features={}&fieldToggles={}",
                 variables_encoded, features_encoded, fieldtoggles_encoded
             );
 
@@ -183,7 +190,12 @@ impl XApi {
             let text = response.text().await?;
             eprintln!("[ERROR] API 请求失败: 状态码 {}", status);
             debug_log!(self.config, "[DEBUG] 错误响应内容: {}", text);
-            return Err(anyhow::anyhow!("API 请求失败: {} {}", status, text));
+            // 只在调试模式下包含完整响应，生产环境只返回状态码
+            if self.config.debug_logs {
+                return Err(anyhow::anyhow!("API 请求失败: {} - {}", status, text));
+            } else {
+                return Err(anyhow::anyhow!("API 请求失败: 状态码 {}", status));
+            }
         }
 
         let data: Value = response.json().await?;

@@ -162,20 +162,29 @@ impl MarkdownGenerator {
                         "video/mp4" // 默认或 .mp4
                     };
                     
-                    // 使用HTML video标签嵌入视频
+                    // HTML转义辅助函数
+                    let escape_html = |s: &str| -> String {
+                        s.replace("&", "&amp;")
+                            .replace("<", "&lt;")
+                            .replace(">", "&gt;")
+                            .replace("\"", "&quot;")
+                            .replace("'", "&#x27;")
+                    };
+                    
+                    // 使用HTML video标签嵌入视频（转义用户提供的内容）
                     content.push_str(&format!("🎥 **视频 {}**:\n", i + 1));
                     content.push_str(&format!("<video controls width=\"100%\" style=\"max-width: 600px;\">\n"));
-                    content.push_str(&format!("  <source src=\"{}\" type=\"{}\">\n", local_path, mime_type));
+                    content.push_str(&format!("  <source src=\"{}\" type=\"{}\">\n", escape_html(&local_path), escape_html(mime_type)));
                     content.push_str(&format!("  您的浏览器不支持视频播放。\n"));
                     content.push_str(&format!("</video>\n"));
                     content.push_str(&format!("<br/>\n"));
-                    content.push_str(&format!("<small>📎 [下载视频]({}) | [原始链接]({})</small>\n\n", local_path, media_url));
+                    content.push_str(&format!("<small>📎 [下载视频]({}) | [原始链接]({})</small>\n\n", escape_html(&local_path), escape_html(media_url)));
                 } else {
-                    // 使用HTML img标签嵌入图片
+                    // 使用HTML img标签嵌入图片（转义用户提供的内容）
                     content.push_str(&format!("🖼️ **图片 {}**:\n", i + 1));
-                    content.push_str(&format!("<img src=\"{}\" alt=\"推文图片 {}\" style=\"max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);\">\n", local_path, i + 1));
+                    content.push_str(&format!("<img src=\"{}\" alt=\"推文图片 {}\" style=\"max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);\">\n", escape_html(&local_path), i + 1));
                     content.push_str(&format!("<br/>\n"));
-                    content.push_str(&format!("<small>📎 [查看原图]({}) | [原始链接]({})</small>\n\n", local_path, media_url));
+                    content.push_str(&format!("<small>📎 [查看原图]({}) | [原始链接]({})</small>\n\n", escape_html(&local_path), escape_html(media_url)));
                 }
             }
         }

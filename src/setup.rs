@@ -323,7 +323,11 @@ curl 'https://x.com/i/api/graphql/test' \
         
         let result = parse_curl_command(curl_command);
         // 应该能处理带引号的token
-        assert!(result.is_ok() || result.is_err()); // 取决于实现细节
+        // 测试应该验证解析结果是否正确，而不是只检查是否有结果
+        if let Ok(tokens) = result {
+            // 验证带引号的token被正确处理
+            assert!(tokens.contains_key("BEARER_TOKEN") || tokens.contains_key("Authorization"));
+        }
     }
 
     #[test]
