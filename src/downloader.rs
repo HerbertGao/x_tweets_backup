@@ -47,6 +47,43 @@ impl Downloader {
         })
     }
 
+    /// 验证域名是否为合法的 Twitter 媒体域名
+    /// 使用 url crate 的 Host 类型进行安全的域名验证，防止 SSRF 攻击
+    /// 只允许：
+    /// - 精确匹配：twimg.com 或 twitter.com
+    /// - 子域名：*.twimg.com 或 *.twitter.com
+    /// 不允许：eviltwimg.com 或 malicioustwitter.com 等恶意相似域名
+    fn is_valid_twitter_domain(host: &str) -> bool {
+        // 使用 url crate 的 Host 类型解析域名，确保格式正确
+        let parsed_host = match url::Host::parse(host) {
+            Ok(h) => h,
+            Err(_) => return false, // 无效的域名格式
+        };
+        
+        // 获取域名字符串表示
+        let host_str = match parsed_host {
+            url::Host::Domain(domain) => domain,
+            url::Host::Ipv4(_) | url::Host::Ipv6(_) => return false, // IP 地址不允许
+        };
+        
+        // 允许的根域名列表
+        const ALLOWED_DOMAINS: &[&str] = &["twimg.com", "twitter.com"];
+        
+        // 精确匹配根域名
+        if ALLOWED_DOMAINS.contains(&host_str.as_str()) {
+            return true;
+        }
+        
+        // 检查是否为合法的子域名（必须以 . 开头，防止 eviltwimg.com 通过验证）
+        for &domain in ALLOWED_DOMAINS {
+            if host_str.ends_with(&format!(".{}", domain)) {
+                return true;
+            }
+        }
+        
+        false
+    }
+
     fn load_downloaded_ids(filename: &str) -> Result<HashSet<String>> {
         if !Path::new(filename).exists() {
             // 文件不存在是正常情况，不需要调试日志
@@ -148,7 +185,7 @@ impl Downloader {
             
             // 验证 URL 域名，防止 SSRF 攻击
             if let Some(host) = parsed_url.host_str() {
-                if !host.ends_with("twimg.com") && !host.ends_with("twitter.com") {
+                if !Self::is_valid_twitter_domain(host) {
                     eprintln!("[WARNING] 跳过可疑的媒体 URL (非 Twitter 域名): {}", media_url);
                     continue;
                 }
@@ -1112,5 +1149,42 @@ mod tests {
         
         let result = downloader.extract_media_urls(&tweet_obj).unwrap();
         assert_eq!(result.len(), 0);
+    }
+
+    #[test]
+    fn test_is_valid_twitter_domain_exact_match() {
+        // 精确匹配应该通过
+        assert!(Downloader::is_valid_twitter_domain("twimg.com"));
+        assert!(Downloader::is_valid_twitter_domain("twitter.com"));
+    }
+
+    #[test]
+    fn test_is_valid_twitter_domain_subdomains() {
+        // 合法的子域名应该通过
+        assert!(Downloader::is_valid_twitter_domain("pbs.twimg.com"));
+        assert!(Downloader::is_valid_twitter_domain("video.twimg.com"));
+        assert!(Downloader::is_valid_twitter_domain("abs.twimg.com"));
+        assert!(Downloader::is_valid_twitter_domain("api.twitter.com"));
+        assert!(Downloader::is_valid_twitter_domain("media.twitter.com"));
+    }
+
+    #[test]
+    fn test_is_valid_twitter_domain_malicious_similar() {
+        // 恶意相似域名应该被拒绝
+        assert!(!Downloader::is_valid_twitter_domain("eviltwimg.com"));
+        assert!(!Downloader::is_valid_twitter_domain("malicioustwitter.com"));
+        assert!(!Downloader::is_valid_twitter_domain("fake-twimg.com"));
+        assert!(!Downloader::is_valid_twitter_domain("fake-twitter.com"));
+        assert!(!Downloader::is_valid_twitter_domain("twimg.com.evil.com"));
+        assert!(!Downloader::is_valid_twitter_domain("twitter.com.evil.com"));
+    }
+
+    #[test]
+    fn test_is_valid_twitter_domain_other_domains() {
+        // 其他域名应该被拒绝
+        assert!(!Downloader::is_valid_twitter_domain("example.com"));
+        assert!(!Downloader::is_valid_twitter_domain("google.com"));
+        assert!(!Downloader::is_valid_twitter_domain("evil.com"));
+        assert!(!Downloader::is_valid_twitter_domain("localhost"));
     }
 }
