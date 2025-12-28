@@ -21,8 +21,7 @@ pub struct XApi {
 
 impl XApi {
     pub fn new(config: Config) -> Result<Self> {
-        let client = reqwest::Client::builder()
-            .build()?;
+        let client = reqwest::Client::builder().build()?;
 
         Ok(XApi { client, config })
     }
@@ -30,7 +29,7 @@ impl XApi {
     pub async fn get_user_id_by_username(&self, username: &str) -> Result<String> {
         // 移除@符号（如果有的话）
         let clean_username = username.trim_start_matches('@');
-        
+
         let variables = json!({
             "screen_name": clean_username,
             "withGrokTranslatedBio": false
@@ -38,7 +37,9 @@ impl XApi {
 
         let variables_str = serde_json::to_string(&variables)?;
         let variables_encoded = urlencoding::encode(&variables_str);
-        let features_encoded = urlencoding::encode(r#"{"hidden_profile_subscriptions_enabled":true,"payments_enabled":false,"profile_label_improvements_pcf_label_in_post_enabled":true,"responsive_web_profile_redirect_enabled":false,"rweb_tipjar_consumption_enabled":true,"verified_phone_label_enabled":false,"subscriptions_verification_info_is_identity_verified_enabled":true,"subscriptions_verification_info_verified_since_enabled":true,"highlights_tweets_tab_ui_enabled":true,"responsive_web_twitter_article_notes_tab_enabled":true,"subscriptions_feature_can_gift_premium":true,"creator_subscriptions_tweet_preview_api_enabled":true,"responsive_web_graphql_skip_user_profile_image_extensions_enabled":false,"responsive_web_graphql_timeline_navigation_enabled":true}"#);
+        let features_encoded = urlencoding::encode(
+            r#"{"hidden_profile_subscriptions_enabled":true,"payments_enabled":false,"profile_label_improvements_pcf_label_in_post_enabled":true,"responsive_web_profile_redirect_enabled":false,"rweb_tipjar_consumption_enabled":true,"verified_phone_label_enabled":false,"subscriptions_verification_info_is_identity_verified_enabled":true,"subscriptions_verification_info_verified_since_enabled":true,"highlights_tweets_tab_ui_enabled":true,"responsive_web_twitter_article_notes_tab_enabled":true,"subscriptions_feature_can_gift_premium":true,"creator_subscriptions_tweet_preview_api_enabled":true,"responsive_web_graphql_skip_user_profile_image_extensions_enabled":false,"responsive_web_graphql_timeline_navigation_enabled":true}"#,
+        );
         let fieldtoggles_encoded = urlencoding::encode(r#"{"withAuxiliaryUserLabels":true}"#);
 
         let url = format!(
@@ -51,8 +52,18 @@ impl XApi {
         debug_log!(self.config, "[DEBUG] 请求参数: variables={}", variables_str);
 
         let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert("Authorization", format!("Bearer {}", self.config.bearer_token).parse()?);
-        headers.insert("Cookie", format!("auth_token={}; ct0={}", self.config.auth_token, self.config.ct0).parse()?);
+        headers.insert(
+            "Authorization",
+            format!("Bearer {}", self.config.bearer_token).parse()?,
+        );
+        headers.insert(
+            "Cookie",
+            format!(
+                "auth_token={}; ct0={}",
+                self.config.auth_token, self.config.ct0
+            )
+            .parse()?,
+        );
         headers.insert("X-Csrf-Token", self.config.ct0.parse()?);
         headers.insert("User-Agent", self.config.user_agent.parse()?);
 
@@ -68,30 +79,42 @@ impl XApi {
         }
 
         debug_log!(self.config, "[DEBUG] 发送请求到: {}", url);
-        let response = self.client
-            .get(&url)
-            .headers(headers)
-            .send()
-            .await?;
+        let response = self.client.get(&url).headers(headers).send().await?;
 
         debug_log!(self.config, "[DEBUG] 响应状态: {}", response.status());
-        
+
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await?;
             // 错误信息始终记录，但不包含敏感数据
-            eprintln!("[ERROR] 查询用户信息失败: {} (状态码: {})", clean_username, status);
+            eprintln!(
+                "[ERROR] 查询用户信息失败: {} (状态码: {})",
+                clean_username, status
+            );
             debug_log!(self.config, "[DEBUG] 错误响应内容: {}", text);
             // 只在调试模式下包含完整响应，生产环境只返回状态码
             if self.config.debug_logs {
-                return Err(anyhow::anyhow!("查询用户信息失败: {} (状态码: {}) - {}", clean_username, status, text));
+                return Err(anyhow::anyhow!(
+                    "查询用户信息失败: {} (状态码: {}) - {}",
+                    clean_username,
+                    status,
+                    text
+                ));
             } else {
-                return Err(anyhow::anyhow!("查询用户信息失败: {} (状态码: {})", clean_username, status));
+                return Err(anyhow::anyhow!(
+                    "查询用户信息失败: {} (状态码: {})",
+                    clean_username,
+                    status
+                ));
             }
         }
 
         let data: Value = response.json().await?;
-        debug_log!(self.config, "[DEBUG] 响应数据: {}", serde_json::to_string_pretty(&data).unwrap_or_else(|_| "无法解析JSON".to_string()));
+        debug_log!(
+            self.config,
+            "[DEBUG] 响应数据: {}",
+            serde_json::to_string_pretty(&data).unwrap_or_else(|_| "无法解析JSON".to_string())
+        );
 
         // 解析用户ID
         if let Some(user_id) = data
@@ -112,16 +135,23 @@ impl XApi {
         let mut cursor: Option<String> = None;
         let mut page_count = 0;
         let mut seen_tweet_ids = std::collections::HashSet::new(); // 记录已见过的推文ID
-        // 使用配置中的最大页数，防止无限循环
+                                                                   // 使用配置中的最大页数，防止无限循环
 
         loop {
             page_count += 1;
             debug_log!(self.config, "[DEBUG] 开始获取第 {} 页数据", page_count);
-            
+
             // 防止无限循环
             if page_count > self.config.max_pages {
-                eprintln!("[WARNING] 已达到最大页数限制 ({}), 停止分页。这可能是由于分页逻辑问题导致的。", self.config.max_pages);
-                debug_log!(self.config, "[DEBUG] 已达到最大页数限制 ({}), 停止分页", self.config.max_pages);
+                eprintln!(
+                    "[WARNING] 已达到最大页数限制 ({}), 停止分页。这可能是由于分页逻辑问题导致的。",
+                    self.config.max_pages
+                );
+                debug_log!(
+                    self.config,
+                    "[DEBUG] 已达到最大页数限制 ({}), 停止分页",
+                    self.config.max_pages
+                );
                 break;
             }
             // 使用指定的目标用户ID，如果没有指定则使用当前认证用户ID
@@ -130,7 +160,7 @@ impl XApi {
             } else {
                 &self.config.user_id
             };
-            
+
             debug_log!(self.config, "[DEBUG] 使用用户ID: {}", user_id);
             let mut variables = json!({
                 "userId": user_id,
@@ -146,7 +176,9 @@ impl XApi {
 
             let variables_str = serde_json::to_string(&variables)?;
             let variables_encoded = urlencoding::encode(&variables_str);
-            let features_encoded = urlencoding::encode(r#"{"rweb_video_screen_enabled":false,"payments_enabled":false,"profile_label_improvements_pcf_label_in_post_enabled":true,"responsive_web_profile_redirect_enabled":false,"rweb_tipjar_consumption_enabled":true,"verified_phone_label_enabled":false,"creator_subscriptions_tweet_preview_api_enabled":true,"responsive_web_graphql_timeline_navigation_enabled":true,"responsive_web_graphql_skip_user_profile_image_extensions_enabled":false,"premium_content_api_read_enabled":false,"communities_web_enable_tweet_community_results_fetch":true,"c9s_tweet_anatomy_moderator_badge_enabled":true,"responsive_web_grok_analyze_button_fetch_trends_enabled":false,"responsive_web_grok_analyze_post_followups_enabled":true,"responsive_web_jetfuel_frame":true,"responsive_web_grok_share_attachment_enabled":true,"articles_preview_enabled":true,"responsive_web_edit_tweet_api_enabled":true,"graphql_is_translatable_rweb_tweet_is_translatable_enabled":true,"view_counts_everywhere_api_enabled":true,"longform_notetweets_consumption_enabled":true,"responsive_web_twitter_article_tweet_consumption_enabled":true,"tweet_awards_web_tipping_enabled":false,"responsive_web_grok_show_grok_translated_post":false,"responsive_web_grok_analysis_button_from_backend":true,"creator_subscriptions_quote_tweet_preview_enabled":false,"freedom_of_speech_not_reach_fetch_enabled":true,"standardized_nudges_misinfo":true,"tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled":true,"longform_notetweets_rich_text_read_enabled":true,"longform_notetweets_inline_media_enabled":true,"responsive_web_grok_image_annotation_enabled":true,"responsive_web_grok_imagine_annotation_enabled":true,"responsive_web_grok_community_note_auto_translation_is_enabled":false,"responsive_web_enhance_cards_enabled":false}"#);
+            let features_encoded = urlencoding::encode(
+                r#"{"rweb_video_screen_enabled":false,"payments_enabled":false,"profile_label_improvements_pcf_label_in_post_enabled":true,"responsive_web_profile_redirect_enabled":false,"rweb_tipjar_consumption_enabled":true,"verified_phone_label_enabled":false,"creator_subscriptions_tweet_preview_api_enabled":true,"responsive_web_graphql_timeline_navigation_enabled":true,"responsive_web_graphql_skip_user_profile_image_extensions_enabled":false,"premium_content_api_read_enabled":false,"communities_web_enable_tweet_community_results_fetch":true,"c9s_tweet_anatomy_moderator_badge_enabled":true,"responsive_web_grok_analyze_button_fetch_trends_enabled":false,"responsive_web_grok_analyze_post_followups_enabled":true,"responsive_web_jetfuel_frame":true,"responsive_web_grok_share_attachment_enabled":true,"articles_preview_enabled":true,"responsive_web_edit_tweet_api_enabled":true,"graphql_is_translatable_rweb_tweet_is_translatable_enabled":true,"view_counts_everywhere_api_enabled":true,"longform_notetweets_consumption_enabled":true,"responsive_web_twitter_article_tweet_consumption_enabled":true,"tweet_awards_web_tipping_enabled":false,"responsive_web_grok_show_grok_translated_post":false,"responsive_web_grok_analysis_button_from_backend":true,"creator_subscriptions_quote_tweet_preview_enabled":false,"freedom_of_speech_not_reach_fetch_enabled":true,"standardized_nudges_misinfo":true,"tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled":true,"longform_notetweets_rich_text_read_enabled":true,"longform_notetweets_inline_media_enabled":true,"responsive_web_grok_image_annotation_enabled":true,"responsive_web_grok_imagine_annotation_enabled":true,"responsive_web_grok_community_note_auto_translation_is_enabled":false,"responsive_web_enhance_cards_enabled":false}"#,
+            );
             let fieldtoggles_encoded = urlencoding::encode(r#"{"withArticlePlainText":false}"#);
 
             let url = format!(
@@ -158,51 +190,66 @@ impl XApi {
             debug_log!(self.config, "[DEBUG] 获取用户推文: {}", url);
             debug_log!(self.config, "[DEBUG] 请求参数: variables={}", variables_str);
 
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert("Authorization", format!("Bearer {}", self.config.bearer_token).parse()?);
-        headers.insert("Cookie", format!("auth_token={}; ct0={}", self.config.auth_token, self.config.ct0).parse()?);
-        headers.insert("X-Csrf-Token", self.config.ct0.parse()?);
-        headers.insert("User-Agent", self.config.user_agent.parse()?);
+            let mut headers = reqwest::header::HeaderMap::new();
+            headers.insert(
+                "Authorization",
+                format!("Bearer {}", self.config.bearer_token).parse()?,
+            );
+            headers.insert(
+                "Cookie",
+                format!(
+                    "auth_token={}; ct0={}",
+                    self.config.auth_token, self.config.ct0
+                )
+                .parse()?,
+            );
+            headers.insert("X-Csrf-Token", self.config.ct0.parse()?);
+            headers.insert("User-Agent", self.config.user_agent.parse()?);
 
-        debug_log!(self.config, "[DEBUG] 请求头信息:");
-        for (key, value) in &headers {
-            if key.as_str() == "authorization" {
-                debug_log!(self.config, "[DEBUG]   {}: Bearer ***", key);
-            } else if key.as_str() == "cookie" {
-                debug_log!(self.config, "[DEBUG]   {}: ***", key);
-            } else {
-                debug_log!(self.config, "[DEBUG]   {}: {:?}", key, value);
+            debug_log!(self.config, "[DEBUG] 请求头信息:");
+            for (key, value) in &headers {
+                if key.as_str() == "authorization" {
+                    debug_log!(self.config, "[DEBUG]   {}: Bearer ***", key);
+                } else if key.as_str() == "cookie" {
+                    debug_log!(self.config, "[DEBUG]   {}: ***", key);
+                } else {
+                    debug_log!(self.config, "[DEBUG]   {}: {:?}", key, value);
+                }
             }
-        }
 
-        debug_log!(self.config, "[DEBUG] 发送请求到: {}", url);
+            debug_log!(self.config, "[DEBUG] 发送请求到: {}", url);
 
-        let response = self.client
-            .get(&url)
-            .headers(headers)
-            .send()
-            .await?;
+            let response = self.client.get(&url).headers(headers).send().await?;
 
-        debug_log!(self.config, "[DEBUG] 响应状态: {}", response.status());
-        
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await?;
-            eprintln!("[ERROR] API 请求失败: 状态码 {}", status);
-            debug_log!(self.config, "[DEBUG] 错误响应内容: {}", text);
-            // 只在调试模式下包含完整响应，生产环境只返回状态码
-            if self.config.debug_logs {
-                return Err(anyhow::anyhow!("API 请求失败: {} - {}", status, text));
-            } else {
-                return Err(anyhow::anyhow!("API 请求失败: 状态码 {}", status));
+            debug_log!(self.config, "[DEBUG] 响应状态: {}", response.status());
+
+            if !response.status().is_success() {
+                let status = response.status();
+                let text = response.text().await?;
+                eprintln!("[ERROR] API 请求失败: 状态码 {}", status);
+                debug_log!(self.config, "[DEBUG] 错误响应内容: {}", text);
+                // 只在调试模式下包含完整响应，生产环境只返回状态码
+                if self.config.debug_logs {
+                    return Err(anyhow::anyhow!("API 请求失败: {} - {}", status, text));
+                } else {
+                    return Err(anyhow::anyhow!("API 请求失败: 状态码 {}", status));
+                }
             }
-        }
 
-        let data: Value = response.json().await?;
-        debug_log!(self.config, "[DEBUG] 响应数据: {}", serde_json::to_string_pretty(&data).unwrap_or_else(|_| "无法解析JSON".to_string()));
+            let data: Value = response.json().await?;
+            debug_log!(
+                self.config,
+                "[DEBUG] 响应数据: {}",
+                serde_json::to_string_pretty(&data).unwrap_or_else(|_| "无法解析JSON".to_string())
+            );
 
             let (tweets, new_cursor) = self.parse_user_tweets_response(&data)?;
-            debug_log!(self.config, "[DEBUG] 本页获取到 {} 条 tweet，cursor: {:?}", tweets.len(), new_cursor);
+            debug_log!(
+                self.config,
+                "[DEBUG] 本页获取到 {} 条 tweet，cursor: {:?}",
+                tweets.len(),
+                new_cursor
+            );
 
             // 如果没有获取到新推文，停止分页
             if tweets.is_empty() {
@@ -213,7 +260,7 @@ impl XApi {
             // 检查是否有新的推文（避免重复）
             let mut new_tweets = Vec::new();
             let mut duplicate_count = 0;
-            
+
             for tweet in tweets {
                 // 提取推文ID（同时兼容 entry 结构与 result 结构）
                 let tweet_id = tweet
@@ -250,12 +297,22 @@ impl XApi {
                         debug_log!(self.config, "[DEBUG] 发现新推文: {}", tweet_id);
                     }
                 } else {
-                    debug_log!(self.config, "[DEBUG] 跳过无法识别ID的推文节点: {}", serde_json::to_string(&tweet).unwrap_or_else(|_| "<unserializable>".to_string()));
+                    debug_log!(
+                        self.config,
+                        "[DEBUG] 跳过无法识别ID的推文节点: {}",
+                        serde_json::to_string(&tweet)
+                            .unwrap_or_else(|_| "<unserializable>".to_string())
+                    );
                 }
             }
-            
-            debug_log!(self.config, "[DEBUG] 本页新推文: {} 条，重复推文: {} 条", new_tweets.len(), duplicate_count);
-            
+
+            debug_log!(
+                self.config,
+                "[DEBUG] 本页新推文: {} 条，重复推文: {} 条",
+                new_tweets.len(),
+                duplicate_count
+            );
+
             // 如果所有推文都是重复的，停止分页
             if new_tweets.is_empty() {
                 debug_log!(self.config, "[DEBUG] 本页没有新推文，停止分页");
@@ -274,7 +331,7 @@ impl XApi {
                 debug_log!(self.config, "[DEBUG] 没有新的cursor，停止分页");
                 break;
             }
-            
+
             if let Some(ref new_cursor_val) = new_cursor {
                 if let Some(ref old_cursor_val) = cursor {
                     if new_cursor_val == old_cursor_val {
@@ -283,7 +340,7 @@ impl XApi {
                     }
                 }
             }
-            
+
             cursor = new_cursor;
         }
 
@@ -309,11 +366,13 @@ impl XApi {
                 if instruction.get("type") == Some(&json!("TimelineAddEntries")) {
                     if let Some(entries) = instruction.get("entries").and_then(|e| e.as_array()) {
                         for entry in entries {
-                            if let Some(entry_id) = entry.get("entryId").and_then(|id| id.as_str()) {
+                            if let Some(entry_id) = entry.get("entryId").and_then(|id| id.as_str())
+                            {
                                 if entry_id.starts_with("profile-conversation-") {
                                     // 这是对话模块，提取其中的所有推文
                                     debug_log!(self.config, "[DEBUG] 找到对话模块: {}", entry_id);
-                                    let conversation_tweets = self.extract_tweets_from_conversation_module(entry);
+                                    let conversation_tweets =
+                                        self.extract_tweets_from_conversation_module(entry);
                                     tweets.extend(conversation_tweets);
                                 } else if entry_id.starts_with("tweet-") {
                                     debug_log!(self.config, "[DEBUG] 找到推文: {}", entry_id);
@@ -324,7 +383,11 @@ impl XApi {
                                         .and_then(|c| c.get("value"))
                                         .and_then(|v| v.as_str())
                                         .map(|s| s.to_string());
-                                    debug_log!(self.config, "[DEBUG] 找到cursor: {}", new_cursor.as_deref().unwrap_or("None"));
+                                    debug_log!(
+                                        self.config,
+                                        "[DEBUG] 找到cursor: {}",
+                                        new_cursor.as_deref().unwrap_or("None")
+                                    );
                                 }
                             }
                         }
@@ -349,7 +412,7 @@ impl XApi {
 
     fn extract_tweets_from_conversation_module(&self, entry: &Value) -> Vec<Value> {
         let mut tweets = Vec::new();
-        
+
         // 处理对话模块中的推文
         if let Some(content) = entry.get("content") {
             if let Some(items) = content.get("items").and_then(|i| i.as_array()) {
@@ -358,7 +421,14 @@ impl XApi {
                         if let Some(item_content) = item_obj.get("itemContent") {
                             if let Some(tweet_results) = item_content.get("tweet_results") {
                                 if let Some(result) = tweet_results.get("result") {
-                                    debug_log!(self.config, "[DEBUG] 从对话模块提取推文: {}", result.get("rest_id").and_then(|id| id.as_str()).unwrap_or("unknown"));
+                                    debug_log!(
+                                        self.config,
+                                        "[DEBUG] 从对话模块提取推文: {}",
+                                        result
+                                            .get("rest_id")
+                                            .and_then(|id| id.as_str())
+                                            .unwrap_or("unknown")
+                                    );
                                     tweets.push(result.clone());
                                 }
                             }
@@ -367,7 +437,7 @@ impl XApi {
                 }
             }
         }
-        
+
         tweets
     }
 }
@@ -417,7 +487,7 @@ mod tests {
     fn test_extract_tweets_from_conversation_module() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let entry = json!({
             "content": {
                 "items": [
@@ -452,24 +522,30 @@ mod tests {
                 ]
             }
         });
-        
+
         let tweets = api.extract_tweets_from_conversation_module(&entry);
         assert_eq!(tweets.len(), 2);
-        assert_eq!(tweets[0].get("rest_id").and_then(|v| v.as_str()), Some("123"));
-        assert_eq!(tweets[1].get("rest_id").and_then(|v| v.as_str()), Some("456"));
+        assert_eq!(
+            tweets[0].get("rest_id").and_then(|v| v.as_str()),
+            Some("123")
+        );
+        assert_eq!(
+            tweets[1].get("rest_id").and_then(|v| v.as_str()),
+            Some("456")
+        );
     }
 
     #[test]
     fn test_extract_tweets_from_conversation_module_empty() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let entry = json!({
             "content": {
                 "items": []
             }
         });
-        
+
         let tweets = api.extract_tweets_from_conversation_module(&entry);
         assert_eq!(tweets.len(), 0);
     }
@@ -478,7 +554,7 @@ mod tests {
     fn test_parse_user_tweets_response() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let data = json!({
             "data": {
                 "user": {
@@ -516,7 +592,7 @@ mod tests {
                 }
             }
         });
-        
+
         let (tweets, cursor) = api.parse_user_tweets_response(&data).unwrap();
         assert_eq!(tweets.len(), 1);
         assert_eq!(cursor, Some("cursor_value".to_string()));
@@ -526,7 +602,7 @@ mod tests {
     fn test_parse_user_tweets_response_with_pin_entry() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let data = json!({
             "data": {
                 "user": {
@@ -556,7 +632,7 @@ mod tests {
                 }
             }
         });
-        
+
         let (tweets, _) = api.parse_user_tweets_response(&data).unwrap();
         assert_eq!(tweets.len(), 1);
     }
@@ -565,7 +641,7 @@ mod tests {
     fn test_parse_user_tweets_response_with_conversation() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let data = json!({
             "data": {
                 "user": {
@@ -603,17 +679,20 @@ mod tests {
                 }
             }
         });
-        
+
         let (tweets, _) = api.parse_user_tweets_response(&data).unwrap();
         assert_eq!(tweets.len(), 1);
-        assert_eq!(tweets[0].get("rest_id").and_then(|v| v.as_str()), Some("conv1"));
+        assert_eq!(
+            tweets[0].get("rest_id").and_then(|v| v.as_str()),
+            Some("conv1")
+        );
     }
 
     #[test]
     fn test_parse_user_tweets_response_empty() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let data = json!({
             "data": {
                 "user": {
@@ -627,7 +706,7 @@ mod tests {
                 }
             }
         });
-        
+
         let (tweets, _) = api.parse_user_tweets_response(&data).unwrap();
         assert_eq!(tweets.len(), 0);
     }
@@ -636,7 +715,7 @@ mod tests {
     fn test_parse_user_tweets_response_no_instructions() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let data = json!({
             "data": {
                 "user": {
@@ -648,7 +727,7 @@ mod tests {
                 }
             }
         });
-        
+
         let (tweets, _) = api.parse_user_tweets_response(&data).unwrap();
         assert_eq!(tweets.len(), 0);
     }
@@ -657,7 +736,7 @@ mod tests {
     fn test_extract_tweets_from_conversation_module_nested() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let entry = json!({
             "content": {
                 "items": [
@@ -675,7 +754,7 @@ mod tests {
                 ]
             }
         });
-        
+
         let tweets = api.extract_tweets_from_conversation_module(&entry);
         assert_eq!(tweets.len(), 1);
     }
@@ -684,11 +763,11 @@ mod tests {
     fn test_extract_tweets_from_conversation_module_no_items() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let entry = json!({
             "content": {}
         });
-        
+
         let tweets = api.extract_tweets_from_conversation_module(&entry);
         assert_eq!(tweets.len(), 0);
     }
@@ -708,7 +787,7 @@ mod tests {
     fn test_parse_user_tweets_response_multiple_entries() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let data = json!({
             "data": {
                 "user": {
@@ -758,7 +837,7 @@ mod tests {
                 }
             }
         });
-        
+
         let (tweets, cursor) = api.parse_user_tweets_response(&data).unwrap();
         assert_eq!(tweets.len(), 2);
         assert_eq!(cursor, Some("next_cursor".to_string()));
@@ -768,7 +847,7 @@ mod tests {
     fn test_parse_user_tweets_response_pin_and_entries() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let data = json!({
             "data": {
                 "user": {
@@ -815,7 +894,7 @@ mod tests {
                 }
             }
         });
-        
+
         let (tweets, _) = api.parse_user_tweets_response(&data).unwrap();
         assert_eq!(tweets.len(), 2);
     }
@@ -824,7 +903,7 @@ mod tests {
     fn test_parse_user_tweets_response_non_tweet_entry() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let data = json!({
             "data": {
                 "user": {
@@ -848,7 +927,7 @@ mod tests {
                 }
             }
         });
-        
+
         let (tweets, _) = api.parse_user_tweets_response(&data).unwrap();
         assert_eq!(tweets.len(), 0);
     }
@@ -857,7 +936,7 @@ mod tests {
     fn test_extract_tweets_from_conversation_module_multiple_items() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let entry = json!({
             "content": {
                 "items": [
@@ -897,7 +976,7 @@ mod tests {
                 ]
             }
         });
-        
+
         let tweets = api.extract_tweets_from_conversation_module(&entry);
         assert_eq!(tweets.len(), 3);
     }
@@ -906,7 +985,7 @@ mod tests {
     fn test_extract_tweets_from_conversation_module_no_result() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let entry = json!({
             "content": {
                 "items": [
@@ -920,7 +999,7 @@ mod tests {
                 ]
             }
         });
-        
+
         let tweets = api.extract_tweets_from_conversation_module(&entry);
         assert_eq!(tweets.len(), 0);
     }
@@ -929,7 +1008,7 @@ mod tests {
     fn test_parse_user_tweets_response_pin_entry_non_tweet() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let data = json!({
             "data": {
                 "user": {
@@ -951,7 +1030,7 @@ mod tests {
                 }
             }
         });
-        
+
         let (tweets, _) = api.parse_user_tweets_response(&data).unwrap();
         assert_eq!(tweets.len(), 0);
     }
@@ -960,7 +1039,7 @@ mod tests {
     fn test_parse_user_tweets_response_unknown_instruction_type() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let data = json!({
             "data": {
                 "user": {
@@ -979,7 +1058,7 @@ mod tests {
                 }
             }
         });
-        
+
         let (tweets, _) = api.parse_user_tweets_response(&data).unwrap();
         assert_eq!(tweets.len(), 0);
     }
@@ -988,7 +1067,7 @@ mod tests {
     fn test_extract_tweets_from_conversation_module_no_item_content() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let entry = json!({
             "content": {
                 "items": [
@@ -998,7 +1077,7 @@ mod tests {
                 ]
             }
         });
-        
+
         let tweets = api.extract_tweets_from_conversation_module(&entry);
         assert_eq!(tweets.len(), 0);
     }
@@ -1007,7 +1086,7 @@ mod tests {
     fn test_extract_tweets_from_conversation_module_no_tweet_results() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let entry = json!({
             "content": {
                 "items": [
@@ -1019,7 +1098,7 @@ mod tests {
                 ]
             }
         });
-        
+
         let tweets = api.extract_tweets_from_conversation_module(&entry);
         assert_eq!(tweets.len(), 0);
     }
@@ -1028,7 +1107,7 @@ mod tests {
     fn test_parse_user_tweets_response_entry_id_variations() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let data = json!({
             "data": {
                 "user": {
@@ -1088,7 +1167,7 @@ mod tests {
                 }
             }
         });
-        
+
         let (tweets, cursor) = api.parse_user_tweets_response(&data).unwrap();
         assert_eq!(tweets.len(), 2); // tweet-111 和 conversation 中的推文
         assert_eq!(cursor, Some("cursor333".to_string()));
@@ -1098,9 +1177,9 @@ mod tests {
     fn test_parse_user_tweets_response_no_data() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let data = json!({});
-        
+
         let (tweets, _) = api.parse_user_tweets_response(&data).unwrap();
         assert_eq!(tweets.len(), 0);
     }
@@ -1109,13 +1188,13 @@ mod tests {
     fn test_parse_user_tweets_response_malformed() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let data = json!({
             "data": {
                 "user": {}
             }
         });
-        
+
         let (tweets, _) = api.parse_user_tweets_response(&data).unwrap();
         assert_eq!(tweets.len(), 0);
     }
@@ -1124,7 +1203,7 @@ mod tests {
     fn test_extract_tweets_from_conversation_module_mixed_valid_invalid() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let entry = json!({
             "content": {
                 "items": [
@@ -1158,18 +1237,24 @@ mod tests {
                 ]
             }
         });
-        
+
         let tweets = api.extract_tweets_from_conversation_module(&entry);
         assert_eq!(tweets.len(), 2);
-        assert_eq!(tweets[0].get("rest_id").and_then(|v| v.as_str()), Some("valid1"));
-        assert_eq!(tweets[1].get("rest_id").and_then(|v| v.as_str()), Some("valid2"));
+        assert_eq!(
+            tweets[0].get("rest_id").and_then(|v| v.as_str()),
+            Some("valid1")
+        );
+        assert_eq!(
+            tweets[1].get("rest_id").and_then(|v| v.as_str()),
+            Some("valid2")
+        );
     }
 
     #[test]
     fn test_parse_user_tweets_response_with_cursor_top() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let data = json!({
             "data": {
                 "user": {
@@ -1207,7 +1292,7 @@ mod tests {
                 }
             }
         });
-        
+
         let (tweets, cursor) = api.parse_user_tweets_response(&data).unwrap();
         assert_eq!(tweets.len(), 1);
         // cursor-top 不应该被提取为 cursor
@@ -1218,7 +1303,7 @@ mod tests {
     fn test_parse_user_tweets_response_empty_instructions() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let data = json!({
             "data": {
                 "user": {
@@ -1232,7 +1317,7 @@ mod tests {
                 }
             }
         });
-        
+
         let (tweets, _) = api.parse_user_tweets_response(&data).unwrap();
         assert_eq!(tweets.len(), 0);
     }
@@ -1241,7 +1326,7 @@ mod tests {
     fn test_parse_user_tweets_response_no_timeline() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let data = json!({
             "data": {
                 "user": {
@@ -1249,7 +1334,7 @@ mod tests {
                 }
             }
         });
-        
+
         let (tweets, _) = api.parse_user_tweets_response(&data).unwrap();
         assert_eq!(tweets.len(), 0);
     }
@@ -1258,11 +1343,11 @@ mod tests {
     fn test_parse_user_tweets_response_no_user() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let data = json!({
             "data": {}
         });
-        
+
         let (tweets, _) = api.parse_user_tweets_response(&data).unwrap();
         assert_eq!(tweets.len(), 0);
     }
@@ -1271,7 +1356,7 @@ mod tests {
     fn test_parse_user_tweets_response_entry_without_id() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let data = json!({
             "data": {
                 "user": {
@@ -1302,7 +1387,7 @@ mod tests {
                 }
             }
         });
-        
+
         let (tweets, _) = api.parse_user_tweets_response(&data).unwrap();
         // 没有 entryId 的条目应该被忽略
         assert_eq!(tweets.len(), 0);
@@ -1312,7 +1397,7 @@ mod tests {
     fn test_parse_user_tweets_response_pin_entry_without_tweet_id() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let data = json!({
             "data": {
                 "user": {
@@ -1334,7 +1419,7 @@ mod tests {
                 }
             }
         });
-        
+
         let (tweets, _) = api.parse_user_tweets_response(&data).unwrap();
         // 不是 tweet- 开头的 pin entry 应该被忽略
         assert_eq!(tweets.len(), 0);
@@ -1344,7 +1429,7 @@ mod tests {
     fn test_parse_user_tweets_response_pin_entry_without_entry_id() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let data = json!({
             "data": {
                 "user": {
@@ -1365,7 +1450,7 @@ mod tests {
                 }
             }
         });
-        
+
         let (tweets, _) = api.parse_user_tweets_response(&data).unwrap();
         assert_eq!(tweets.len(), 0);
     }
@@ -1374,9 +1459,9 @@ mod tests {
     fn test_extract_tweets_from_conversation_module_no_content() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let entry = json!({});
-        
+
         let tweets = api.extract_tweets_from_conversation_module(&entry);
         assert_eq!(tweets.len(), 0);
     }
@@ -1385,13 +1470,13 @@ mod tests {
     fn test_extract_tweets_from_conversation_module_items_not_array() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let entry = json!({
             "content": {
                 "items": "not_an_array"
             }
         });
-        
+
         let tweets = api.extract_tweets_from_conversation_module(&entry);
         assert_eq!(tweets.len(), 0);
     }
@@ -1400,7 +1485,7 @@ mod tests {
     fn test_parse_user_tweets_response_instructions_not_array() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let data = json!({
             "data": {
                 "user": {
@@ -1414,7 +1499,7 @@ mod tests {
                 }
             }
         });
-        
+
         let (tweets, _) = api.parse_user_tweets_response(&data).unwrap();
         assert_eq!(tweets.len(), 0);
     }
@@ -1423,7 +1508,7 @@ mod tests {
     fn test_parse_user_tweets_response_entries_not_array() {
         let config = create_test_config();
         let api = XApi::new(config).unwrap();
-        
+
         let data = json!({
             "data": {
                 "user": {
@@ -1442,9 +1527,8 @@ mod tests {
                 }
             }
         });
-        
+
         let (tweets, _) = api.parse_user_tweets_response(&data).unwrap();
         assert_eq!(tweets.len(), 0);
     }
 }
-

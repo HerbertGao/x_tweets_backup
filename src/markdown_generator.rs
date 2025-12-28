@@ -45,7 +45,12 @@ impl MarkdownGenerator {
     }
 
     pub fn add_tweet(&mut self, tweet: TweetContent) {
-        debug_log!(self.config, "[DEBUG] 添加推文到Markdown: {} - {}", tweet.id, tweet.text.chars().take(50).collect::<String>());
+        debug_log!(
+            self.config,
+            "[DEBUG] 添加推文到Markdown: {} - {}",
+            tweet.id,
+            tweet.text.chars().take(50).collect::<String>()
+        );
         self.tweets.push(tweet);
     }
 
@@ -55,27 +60,30 @@ impl MarkdownGenerator {
         }
 
         let mut markdown = String::new();
-        
+
         // 添加标题
         let default_username = "Unknown".to_string();
-        let username = self.tweets.first()
+        let username = self
+            .tweets
+            .first()
             .and_then(|t| t.username.as_ref())
             .unwrap_or(&default_username);
-        
+
         markdown.push_str(&format!("# {} 的推文备份\n\n", username));
-        markdown.push_str(&format!("备份时间: {}\n", Local::now().format("%Y-%m-%d %H:%M:%S")));
+        markdown.push_str(&format!(
+            "备份时间: {}\n",
+            Local::now().format("%Y-%m-%d %H:%M:%S")
+        ));
         markdown.push_str(&format!("推文总数: {}\n\n", self.tweets.len()));
         markdown.push_str("---\n\n");
 
         // 按时间倒序排列（最新的在前）
         let mut sorted_tweets = self.tweets.clone();
-        sorted_tweets.sort_by(|a, b| {
-            match (a.created_at, b.created_at) {
-                (Some(a_time), Some(b_time)) => b_time.cmp(&a_time),
-                (Some(_), None) => std::cmp::Ordering::Less,
-                (None, Some(_)) => std::cmp::Ordering::Greater,
-                (None, None) => std::cmp::Ordering::Equal,
-            }
+        sorted_tweets.sort_by(|a, b| match (a.created_at, b.created_at) {
+            (Some(a_time), Some(b_time)) => b_time.cmp(&a_time),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
         });
 
         // 生成每个推文的内容
@@ -88,9 +96,13 @@ impl MarkdownGenerator {
     }
 
     pub fn save_markdown(&self) -> Result<()> {
-        debug_log!(self.config, "[DEBUG] 开始生成Markdown文件，包含 {} 条推文", self.tweets.len());
+        debug_log!(
+            self.config,
+            "[DEBUG] 开始生成Markdown文件，包含 {} 条推文",
+            self.tweets.len()
+        );
         let markdown_content = self.generate_markdown()?;
-        
+
         // 确保目录存在
         if let Some(parent) = Path::new(&self.config.markdown_output).parent() {
             fs::create_dir_all(parent)?;
@@ -98,10 +110,13 @@ impl MarkdownGenerator {
 
         let content_len = markdown_content.len();
         fs::write(&self.config.markdown_output, markdown_content)?;
-        debug_log!(self.config, "[DEBUG] Markdown文件已保存到: {} (大小: {} 字节)", 
-            self.config.markdown_output, 
-            content_len);
-        
+        debug_log!(
+            self.config,
+            "[DEBUG] Markdown文件已保存到: {} (大小: {} 字节)",
+            self.config.markdown_output,
+            content_len
+        );
+
         Ok(())
     }
 
@@ -113,7 +128,10 @@ impl MarkdownGenerator {
 
         // 推文信息
         if let Some(created_at) = tweet.created_at {
-            content.push_str(&format!("**发布时间**: {}\n\n", created_at.format("%Y-%m-%d %H:%M:%S UTC")));
+            content.push_str(&format!(
+                "**发布时间**: {}\n\n",
+                created_at.format("%Y-%m-%d %H:%M:%S UTC")
+            ));
         }
 
         if let Some(username) = &tweet.username {
@@ -151,7 +169,7 @@ impl MarkdownGenerator {
             for (i, media_url) in tweet.media_urls.iter().enumerate() {
                 // 尝试生成本地文件路径
                 let local_path = self.generate_local_media_path(&tweet, i, media_url);
-                
+
                 // HTML转义辅助函数
                 let escape_html = |s: &str| -> String {
                     s.replace("&", "&amp;")
@@ -160,8 +178,11 @@ impl MarkdownGenerator {
                         .replace("\"", "&quot;")
                         .replace("'", "&#x27;")
                 };
-                
-                if media_url.contains(".mp4") || media_url.contains(".mov") || media_url.contains(".webm") {
+
+                if media_url.contains(".mp4")
+                    || media_url.contains(".mov")
+                    || media_url.contains(".webm")
+                {
                     // 根据文件扩展名确定正确的 MIME 类型
                     let mime_type = if media_url.contains(".webm") {
                         "video/webm"
@@ -170,60 +191,80 @@ impl MarkdownGenerator {
                     } else {
                         "video/mp4" // 默认或 .mp4
                     };
-                    
+
                     // 使用HTML video标签嵌入视频（转义用户提供的内容）
                     content.push_str(&format!("🎥 **视频 {}**:\n", i + 1));
-                    content.push_str(&format!("<video controls width=\"100%\" style=\"max-width: 600px;\">\n"));
-                    content.push_str(&format!("  <source src=\"{}\" type=\"{}\">\n", escape_html(&local_path), escape_html(mime_type)));
+                    content.push_str(&format!(
+                        "<video controls width=\"100%\" style=\"max-width: 600px;\">\n"
+                    ));
+                    content.push_str(&format!(
+                        "  <source src=\"{}\" type=\"{}\">\n",
+                        escape_html(&local_path),
+                        escape_html(mime_type)
+                    ));
                     content.push_str(&format!("  您的浏览器不支持视频播放。\n"));
                     content.push_str(&format!("</video>\n"));
                     content.push_str(&format!("<br/>\n"));
-                    content.push_str(&format!("<small>📎 [下载视频]({}) | [原始链接]({})</small>\n\n", escape_html(&local_path), escape_html(media_url)));
+                    content.push_str(&format!(
+                        "<small>📎 [下载视频]({}) | [原始链接]({})</small>\n\n",
+                        escape_html(&local_path),
+                        escape_html(media_url)
+                    ));
                 } else {
                     // 使用HTML img标签嵌入图片（转义用户提供的内容）
                     content.push_str(&format!("🖼️ **图片 {}**:\n", i + 1));
                     content.push_str(&format!("<img src=\"{}\" alt=\"推文图片 {}\" style=\"max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);\">\n", escape_html(&local_path), i + 1));
                     content.push_str(&format!("<br/>\n"));
-                    content.push_str(&format!("<small>📎 [查看原图]({}) | [原始链接]({})</small>\n\n", escape_html(&local_path), escape_html(media_url)));
+                    content.push_str(&format!(
+                        "<small>📎 [查看原图]({}) | [原始链接]({})</small>\n\n",
+                        escape_html(&local_path),
+                        escape_html(media_url)
+                    ));
                 }
             }
         }
 
         // 推文链接
-        content.push_str(&format!("**推文链接**: [https://x.com/{}/status/{}](https://x.com/{}/status/{})\n\n", 
-            tweet.username.as_deref().unwrap_or("unknown"), 
+        content.push_str(&format!(
+            "**推文链接**: [https://x.com/{}/status/{}](https://x.com/{}/status/{})\n\n",
+            tweet.username.as_deref().unwrap_or("unknown"),
             tweet.id,
-            tweet.username.as_deref().unwrap_or("unknown"), 
+            tweet.username.as_deref().unwrap_or("unknown"),
             tweet.id
         ));
 
         Ok(content)
     }
 
-    fn generate_local_media_path(&self, tweet: &TweetContent, _media_index: usize, media_url: &str) -> String {
+    fn generate_local_media_path(
+        &self,
+        tweet: &TweetContent,
+        _media_index: usize,
+        media_url: &str,
+    ) -> String {
         // 从URL中提取原始文件名
         let url_parts: Vec<&str> = media_url.split('/').collect();
         let original_filename = url_parts.last().map_or("unknown", |v| v);
-        
+
         // 提取原始文件名（去掉查询参数）
         let clean_filename = if let Some(query_start) = original_filename.find('?') {
             &original_filename[..query_start]
         } else {
             original_filename
         };
-        
+
         // 生成本地文件名，使用与下载器相同的格式：[username][tweetid][origin_filename]
         // 重要：使用实际推文作者的用户名（tweet.username），与下载器保持一致
         // 下载器也会从推文对象中提取实际作者用户名，确保两者使用相同的逻辑
         let username_str = tweet.username.as_deref().unwrap_or("");
-        
+
         // 如果推文中没有用户名，尝试使用配置中的目标用户名作为后备
         let username_str = if username_str.is_empty() && !self.config.target_username.is_empty() {
             &self.config.target_username
         } else {
             username_str
         };
-        
+
         let local_filename = if username_str.is_empty() {
             // 如果用户名为空，只使用推文ID
             format!("[{}][{}]", tweet.id, clean_filename)
@@ -231,50 +272,65 @@ impl MarkdownGenerator {
             // 格式：[username][tweetid][origin_filename]
             format!("[{}][{}][{}]", username_str, tweet.id, clean_filename)
         };
-        
+
         // 计算从 markdown 文件到下载目录的相对路径
         let markdown_path = Path::new(&self.config.markdown_output);
         let download_dir = Path::new(&self.config.download_dir);
-        
+
         // 获取 markdown 文件的父目录
-        let markdown_parent = markdown_path.parent()
-            .unwrap_or_else(|| Path::new("."));
-        
+        let markdown_parent = markdown_path.parent().unwrap_or_else(|| Path::new("."));
+
         // 计算相对路径
-        let relative_path = if let Some(rel_path) = pathdiff::diff_paths(download_dir, markdown_parent) {
-            // 如果计算成功，使用计算出的相对路径
-            if let Some(rel_str) = rel_path.to_str() {
-                // 确保路径以 ./ 开头（相对路径）
-                if rel_str.starts_with("..") {
-                    format!("{}/{}", rel_str, local_filename)
-                } else if rel_str == "." || rel_str.is_empty() {
-                    // 如果下载目录和 markdown 在同一目录，使用当前目录
-                    format!("./{}/{}", download_dir.file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("downloads"), local_filename)
+        let relative_path =
+            if let Some(rel_path) = pathdiff::diff_paths(download_dir, markdown_parent) {
+                // 如果计算成功，使用计算出的相对路径
+                if let Some(rel_str) = rel_path.to_str() {
+                    // 确保路径以 ./ 开头（相对路径）
+                    if rel_str.starts_with("..") {
+                        format!("{}/{}", rel_str, local_filename)
+                    } else if rel_str == "." || rel_str.is_empty() {
+                        // 如果下载目录和 markdown 在同一目录，使用当前目录
+                        format!(
+                            "./{}/{}",
+                            download_dir
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or("downloads"),
+                            local_filename
+                        )
+                    } else {
+                        format!("./{}/{}", rel_str, local_filename)
+                    }
                 } else {
-                    format!("./{}/{}", rel_str, local_filename)
+                    // 如果路径包含非 UTF-8 字符，回退到简单路径
+                    format!(
+                        "./{}/{}",
+                        download_dir
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("downloads"),
+                        local_filename
+                    )
                 }
             } else {
-                // 如果路径包含非 UTF-8 字符，回退到简单路径
-                format!("./{}/{}", download_dir.file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("downloads"), local_filename)
-            }
-        } else {
-            // 如果路径计算失败（例如跨磁盘），使用下载目录的最后一个组件
-            format!("./{}/{}", download_dir.file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("downloads"), local_filename)
-        };
-        
+                // 如果路径计算失败（例如跨磁盘），使用下载目录的最后一个组件
+                format!(
+                    "./{}/{}",
+                    download_dir
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("downloads"),
+                    local_filename
+                )
+            };
+
         relative_path
     }
 
     pub fn extract_tweet_content(tweet_data: &Value) -> Result<TweetContent> {
         let tweet_obj = tweet_parser::extract_tweet_object(tweet_data)
             .ok_or_else(|| anyhow::anyhow!("无法提取推文对象"))?;
-        
+
         let id = tweet_obj
             .get("rest_id")
             .and_then(|id| id.as_str())
@@ -282,7 +338,7 @@ impl MarkdownGenerator {
             .to_string();
 
         let legacy = tweet_obj.get("legacy").unwrap_or(&Value::Null);
-        
+
         // 提取推文文本
         let text = legacy
             .get("full_text")
@@ -322,13 +378,12 @@ impl MarkdownGenerator {
         })
     }
 
-
     fn extract_retweet_info(legacy: &Value) -> Result<(bool, Option<String>)> {
         // 正确检测转推：检查 retweeted_status_result 或 retweeted_status_id_str 的存在
         // retweeted 字段表示认证用户是否转推了这条推文，不是推文本身是否为转推
         let is_retweet = legacy.get("retweeted_status_result").is_some()
             || legacy.get("retweeted_status_id_str").is_some();
-        
+
         let retweeted_by = if is_retweet {
             // 尝试从 retweeted_status_result 中提取原推文作者信息
             // 结构通常是：retweeted_status_result.result.legacy.user.screen_name
@@ -361,7 +416,10 @@ impl MarkdownGenerator {
     }
 
     fn extract_reply_info(legacy: &Value) -> Result<Option<String>> {
-        if let Some(in_reply_to_screen_name) = legacy.get("in_reply_to_screen_name").and_then(|s| s.as_str()) {
+        if let Some(in_reply_to_screen_name) = legacy
+            .get("in_reply_to_screen_name")
+            .and_then(|s| s.as_str())
+        {
             Ok(Some(in_reply_to_screen_name.to_string()))
         } else {
             Ok(None)
@@ -370,26 +428,33 @@ impl MarkdownGenerator {
 
     fn extract_quote_tweet_info(legacy: &Value) -> Result<Option<String>> {
         // 优先尝试 quoted_status_id_str（字符串版本，Twitter API 提供的专用字段）
-        if let Some(quoted_status_id_str) = legacy.get("quoted_status_id_str").and_then(|id| id.as_str()) {
+        if let Some(quoted_status_id_str) = legacy
+            .get("quoted_status_id_str")
+            .and_then(|id| id.as_str())
+        {
             return Ok(Some(quoted_status_id_str.to_string()));
         }
-        
+
         // 尝试 quoted_status_id 作为字符串
         if let Some(quoted_status_id) = legacy.get("quoted_status_id").and_then(|id| id.as_str()) {
             return Ok(Some(quoted_status_id.to_string()));
         }
-        
+
         // 尝试 quoted_status_id 作为数字（64位整数），然后转换为字符串
         // 这与 created_at_ms 的处理方式保持一致，支持 API 返回数字格式
-        if let Some(quoted_status_id_num) = legacy.get("quoted_status_id").and_then(|id| id.as_i64()) {
+        if let Some(quoted_status_id_num) =
+            legacy.get("quoted_status_id").and_then(|id| id.as_i64())
+        {
             return Ok(Some(quoted_status_id_num.to_string()));
         }
-        
+
         // 尝试 quoted_status_id 作为 u64（无符号整数）
-        if let Some(quoted_status_id_num) = legacy.get("quoted_status_id").and_then(|id| id.as_u64()) {
+        if let Some(quoted_status_id_num) =
+            legacy.get("quoted_status_id").and_then(|id| id.as_u64())
+        {
             return Ok(Some(quoted_status_id_num.to_string()));
         }
-        
+
         Ok(None)
     }
 }
@@ -438,7 +503,7 @@ mod tests {
     fn test_markdown_generator_add_tweet() {
         let config = create_test_config();
         let mut generator = MarkdownGenerator::new(config);
-        
+
         let tweet = TweetContent {
             id: "123".to_string(),
             text: "Test tweet".to_string(),
@@ -451,7 +516,7 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         generator.add_tweet(tweet);
         assert_eq!(generator.tweets.len(), 1);
     }
@@ -468,7 +533,7 @@ mod tests {
     fn test_generate_markdown_with_tweets() {
         let config = create_test_config();
         let mut generator = MarkdownGenerator::new(config);
-        
+
         let tweet = TweetContent {
             id: "123".to_string(),
             text: "Test tweet".to_string(),
@@ -481,7 +546,7 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         generator.add_tweet(tweet);
         let markdown = generator.generate_markdown().unwrap();
         assert!(markdown.contains("test_user"));
@@ -507,10 +572,13 @@ mod tests {
                 }
             }
         });
-        
+
         let result = tweet_parser::extract_tweet_object(&tweet);
         assert!(result.is_some());
-        assert_eq!(result.unwrap().get("rest_id").and_then(|v| v.as_str()), Some("123"));
+        assert_eq!(
+            result.unwrap().get("rest_id").and_then(|v| v.as_str()),
+            Some("123")
+        );
     }
 
     #[test]
@@ -523,7 +591,7 @@ mod tests {
                 }
             }
         });
-        
+
         let result = tweet_parser::extract_tweet_object(&tweet);
         assert!(result.is_some());
         let result = result.unwrap();
@@ -538,7 +606,7 @@ mod tests {
                 "full_text": "Test"
             }
         });
-        
+
         let result = tweet_parser::extract_tweet_object(&tweet);
         assert!(result.is_some());
         let result = result.unwrap();
@@ -552,7 +620,7 @@ mod tests {
                 "created_at_ms": "1609459200000"
             }
         });
-        
+
         let result = tweet_parser::extract_tweet_timestamp_datetime(&tweet_obj).unwrap();
         assert!(result.is_some());
     }
@@ -564,7 +632,7 @@ mod tests {
                 "created_at_ms": 1609459200000i64
             }
         });
-        
+
         let result = tweet_parser::extract_tweet_timestamp_datetime(&tweet_obj).unwrap();
         assert!(result.is_some());
     }
@@ -576,7 +644,7 @@ mod tests {
                 "created_at": "Thu Apr 06 15:24:15 +0000 2017"
             }
         });
-        
+
         let result = tweet_parser::extract_tweet_timestamp_datetime(&tweet_obj).unwrap();
         assert!(result.is_some());
     }
@@ -602,7 +670,7 @@ mod tests {
                 }
             }
         });
-        
+
         let (username, display_name) = tweet_parser::extract_user_info(&tweet_obj).unwrap();
         assert_eq!(username, Some("test_user".to_string()));
         assert_eq!(display_name, Some("Test User".to_string()));
@@ -622,7 +690,7 @@ mod tests {
                 }
             }
         });
-        
+
         let result = tweet_parser::extract_media_urls(&tweet_obj).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], "https://example.com/image.jpg");
@@ -653,7 +721,7 @@ mod tests {
                 }
             }
         });
-        
+
         let result = tweet_parser::extract_media_urls(&tweet_obj).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], "https://example.com/video_hd.mp4"); // 应该选择最高bitrate
@@ -665,7 +733,7 @@ mod tests {
         let legacy = json!({
             "retweeted_status_id_str": "1234567890"
         });
-        
+
         let (is_retweet, _) = MarkdownGenerator::extract_retweet_info(&legacy).unwrap();
         assert!(is_retweet);
     }
@@ -684,7 +752,7 @@ mod tests {
                 }
             }
         });
-        
+
         let (is_retweet, retweeted_by) = MarkdownGenerator::extract_retweet_info(&legacy).unwrap();
         assert!(is_retweet);
         assert_eq!(retweeted_by, Some("original_author".to_string()));
@@ -708,7 +776,7 @@ mod tests {
                 }
             }
         });
-        
+
         let (is_retweet, retweeted_by) = MarkdownGenerator::extract_retweet_info(&legacy).unwrap();
         assert!(is_retweet);
         assert_eq!(retweeted_by, Some("original_user".to_string()));
@@ -720,7 +788,7 @@ mod tests {
         let legacy = json!({
             "retweeted": true  // 这表示认证用户转推了这条推文，但推文本身不是转推
         });
-        
+
         let (is_retweet, _) = MarkdownGenerator::extract_retweet_info(&legacy).unwrap();
         assert!(!is_retweet); // 应该返回 false，因为这不是转推
     }
@@ -731,7 +799,7 @@ mod tests {
         let legacy = json!({
             "full_text": "Regular tweet"
         });
-        
+
         let (is_retweet, retweeted_by) = MarkdownGenerator::extract_retweet_info(&legacy).unwrap();
         assert!(!is_retweet);
         assert_eq!(retweeted_by, None);
@@ -742,7 +810,7 @@ mod tests {
         let legacy = json!({
             "in_reply_to_screen_name": "reply_user"
         });
-        
+
         let result = MarkdownGenerator::extract_reply_info(&legacy).unwrap();
         assert_eq!(result, Some("reply_user".to_string()));
     }
@@ -752,7 +820,7 @@ mod tests {
         let legacy = json!({
             "quoted_status_id": "12345"
         });
-        
+
         let result = MarkdownGenerator::extract_quote_tweet_info(&legacy).unwrap();
         assert_eq!(result, Some("12345".to_string()));
     }
@@ -763,7 +831,7 @@ mod tests {
         let legacy = json!({
             "quoted_status_id": 1234567890123456789i64
         });
-        
+
         let result = MarkdownGenerator::extract_quote_tweet_info(&legacy).unwrap();
         assert_eq!(result, Some("1234567890123456789".to_string()));
     }
@@ -774,7 +842,7 @@ mod tests {
         let legacy = json!({
             "quoted_status_id_str": "1234567890123456789"
         });
-        
+
         let result = MarkdownGenerator::extract_quote_tweet_info(&legacy).unwrap();
         assert_eq!(result, Some("1234567890123456789".to_string()));
     }
@@ -786,7 +854,7 @@ mod tests {
             "quoted_status_id": 12345i64,
             "quoted_status_id_str": "67890"
         });
-        
+
         let result = MarkdownGenerator::extract_quote_tweet_info(&legacy).unwrap();
         assert_eq!(result, Some("67890".to_string())); // 应该使用 quoted_status_id_str
     }
@@ -794,7 +862,7 @@ mod tests {
     #[test]
     fn test_extract_quote_tweet_info_none() {
         let legacy = json!({});
-        
+
         let result = MarkdownGenerator::extract_quote_tweet_info(&legacy).unwrap();
         assert_eq!(result, None);
     }
@@ -803,7 +871,7 @@ mod tests {
     fn test_generate_local_media_path() {
         let config = create_test_config();
         let generator = MarkdownGenerator::new(config);
-        
+
         let tweet = TweetContent {
             id: "123456".to_string(),
             text: "Test".to_string(),
@@ -816,8 +884,12 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
-        let path = generator.generate_local_media_path(&tweet, 0, "https://example.com/image.jpg?param=value");
+
+        let path = generator.generate_local_media_path(
+            &tweet,
+            0,
+            "https://example.com/image.jpg?param=value",
+        );
         // 应该使用 tweet.username（实际作者用户名），与下载器保持一致
         assert!(path.contains("test_user"));
         assert!(path.contains("123456"));
@@ -830,7 +902,7 @@ mod tests {
         let mut config = create_test_config();
         config.target_username = "fallback_user".to_string(); // 设置后备用户名
         let generator = MarkdownGenerator::new(config);
-        
+
         let tweet = TweetContent {
             id: "123456".to_string(),
             text: "Test".to_string(),
@@ -843,20 +915,20 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         let path = generator.generate_local_media_path(&tweet, 0, "https://example.com/image.jpg");
         // 当推文没有用户名时，使用 config.target_username 作为后备
         assert!(path.contains("fallback_user"));
         assert!(path.contains("123456"));
         assert!(path.contains("image.jpg"));
     }
-    
+
     #[test]
     fn test_generate_local_media_path_no_username_no_fallback() {
         let mut config = create_test_config();
         config.target_username = "".to_string(); // 没有设置后备用户名
         let generator = MarkdownGenerator::new(config);
-        
+
         let tweet = TweetContent {
             id: "123456".to_string(),
             text: "Test".to_string(),
@@ -869,7 +941,7 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         let path = generator.generate_local_media_path(&tweet, 0, "https://example.com/image.jpg");
         // 当没有任何用户名时，只使用推文ID
         assert!(path.contains("123456"));
@@ -881,7 +953,7 @@ mod tests {
     fn test_generate_local_media_path_no_query() {
         let config = create_test_config();
         let generator = MarkdownGenerator::new(config);
-        
+
         let tweet = TweetContent {
             id: "123456".to_string(),
             text: "Test".to_string(),
@@ -894,7 +966,7 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         let path = generator.generate_local_media_path(&tweet, 0, "https://example.com/image.jpg");
         assert!(path.contains("test_user"));
         assert!(path.contains("123456"));
@@ -908,7 +980,7 @@ mod tests {
         config.download_dir = "custom/media".to_string();
         config.markdown_output = "custom/output.md".to_string();
         let generator = MarkdownGenerator::new(config);
-        
+
         let tweet = TweetContent {
             id: "123456".to_string(),
             text: "Test".to_string(),
@@ -921,7 +993,7 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         let path = generator.generate_local_media_path(&tweet, 0, "https://example.com/image.jpg");
         // 应该使用相对路径指向 custom/media 目录
         assert!(path.contains("media"));
@@ -954,7 +1026,7 @@ mod tests {
                 }
             }
         });
-        
+
         let result = MarkdownGenerator::extract_tweet_content(&tweet_data).unwrap();
         assert_eq!(result.id, "123456");
         assert_eq!(result.text, "Test tweet content");
@@ -981,7 +1053,7 @@ mod tests {
                 }
             }
         });
-        
+
         let result = MarkdownGenerator::extract_tweet_content(&tweet_data).unwrap();
         assert_eq!(result.id, "789");
         assert_eq!(result.text, "Wrapped tweet");
@@ -995,7 +1067,7 @@ mod tests {
                 "name": "Direct User"
             }
         });
-        
+
         let (username, display_name) = tweet_parser::extract_user_info(&tweet_obj).unwrap();
         assert_eq!(username, Some("direct_user".to_string()));
         assert_eq!(display_name, Some("Direct User".to_string()));
@@ -1015,7 +1087,7 @@ mod tests {
                 }
             }
         });
-        
+
         let (username, display_name) = tweet_parser::extract_user_info(&tweet_obj).unwrap();
         assert_eq!(username, Some("alt_user".to_string()));
         assert_eq!(display_name, Some("Alt User".to_string()));
@@ -1024,7 +1096,7 @@ mod tests {
     #[test]
     fn test_extract_user_info_none() {
         let tweet_obj = json!({});
-        
+
         let (username, display_name) = tweet_parser::extract_user_info(&tweet_obj).unwrap();
         assert_eq!(username, None);
         assert_eq!(display_name, None);
@@ -1044,7 +1116,7 @@ mod tests {
                 }
             }
         });
-        
+
         let result = tweet_parser::extract_media_urls(&tweet_obj).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], "https://example.com/entity_photo.jpg");
@@ -1070,7 +1142,7 @@ mod tests {
                 }
             }
         });
-        
+
         let result = tweet_parser::extract_media_urls(&tweet_obj).unwrap();
         // 没有bitrate的variant不会被选择
         assert_eq!(result.len(), 0);
@@ -1090,7 +1162,7 @@ mod tests {
                 }
             }
         });
-        
+
         let result = tweet_parser::extract_media_urls(&tweet_obj).unwrap();
         assert_eq!(result.len(), 0);
     }
@@ -1099,7 +1171,7 @@ mod tests {
     fn test_generate_markdown_with_retweet() {
         let config = create_test_config();
         let mut generator = MarkdownGenerator::new(config);
-        
+
         let tweet = TweetContent {
             id: "123".to_string(),
             text: "Retweeted content".to_string(),
@@ -1112,7 +1184,7 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         generator.add_tweet(tweet);
         let markdown = generator.generate_markdown().unwrap();
         assert!(markdown.contains("转推"));
@@ -1122,7 +1194,7 @@ mod tests {
     fn test_generate_markdown_with_reply() {
         let config = create_test_config();
         let mut generator = MarkdownGenerator::new(config);
-        
+
         let tweet = TweetContent {
             id: "123".to_string(),
             text: "Reply content".to_string(),
@@ -1135,7 +1207,7 @@ mod tests {
             reply_to: Some("reply_user".to_string()),
             quote_tweet: None,
         };
-        
+
         generator.add_tweet(tweet);
         let markdown = generator.generate_markdown().unwrap();
         assert!(markdown.contains("回复"));
@@ -1145,7 +1217,7 @@ mod tests {
     fn test_generate_markdown_with_quote() {
         let config = create_test_config();
         let mut generator = MarkdownGenerator::new(config);
-        
+
         let tweet = TweetContent {
             id: "123".to_string(),
             text: "Quote content".to_string(),
@@ -1158,7 +1230,7 @@ mod tests {
             reply_to: None,
             quote_tweet: Some("quoted_tweet_id".to_string()),
         };
-        
+
         generator.add_tweet(tweet);
         let markdown = generator.generate_markdown().unwrap();
         assert!(markdown.contains("引用推文"));
@@ -1168,7 +1240,7 @@ mod tests {
     fn test_generate_markdown_sorted_by_time() {
         let config = create_test_config();
         let mut generator = MarkdownGenerator::new(config);
-        
+
         let tweet1 = TweetContent {
             id: "1".to_string(),
             text: "Older tweet".to_string(),
@@ -1181,7 +1253,7 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         let tweet2 = TweetContent {
             id: "2".to_string(),
             text: "Newer tweet".to_string(),
@@ -1194,11 +1266,11 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         generator.add_tweet(tweet1);
         generator.add_tweet(tweet2);
         let markdown = generator.generate_markdown().unwrap();
-        
+
         // 新推文应该在前面
         let newer_pos = markdown.find("Newer tweet").unwrap();
         let older_pos = markdown.find("Older tweet").unwrap();
@@ -1209,7 +1281,7 @@ mod tests {
     fn test_generate_markdown_sorted_with_none_time() {
         let config = create_test_config();
         let mut generator = MarkdownGenerator::new(config);
-        
+
         let tweet1 = TweetContent {
             id: "1".to_string(),
             text: "No time tweet".to_string(),
@@ -1222,7 +1294,7 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         let tweet2 = TweetContent {
             id: "2".to_string(),
             text: "Has time tweet".to_string(),
@@ -1235,11 +1307,11 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         generator.add_tweet(tweet1);
         generator.add_tweet(tweet2);
         let markdown = generator.generate_markdown().unwrap();
-        
+
         // 有时间戳的推文应该在前面
         let has_time_pos = markdown.find("Has time tweet").unwrap();
         let no_time_pos = markdown.find("No time tweet").unwrap();
@@ -1262,7 +1334,7 @@ mod tests {
                 }
             }
         });
-        
+
         let result = MarkdownGenerator::extract_tweet_content(&tweet_data).unwrap();
         assert_eq!(result.media_urls.len(), 1);
         assert_eq!(result.media_urls[0], "https://example.com/photo.jpg");
@@ -1277,7 +1349,7 @@ mod tests {
                 "in_reply_to_screen_name": "reply_target"
             }
         });
-        
+
         let result = MarkdownGenerator::extract_tweet_content(&tweet_data).unwrap();
         assert_eq!(result.reply_to, Some("reply_target".to_string()));
     }
@@ -1291,7 +1363,7 @@ mod tests {
                 "quoted_status_id": "quoted123"
             }
         });
-        
+
         let result = MarkdownGenerator::extract_tweet_content(&tweet_data).unwrap();
         assert_eq!(result.quote_tweet, Some("quoted123".to_string()));
     }
@@ -1306,7 +1378,7 @@ mod tests {
                 "quoted_status_id": 1234567890123456789i64
             }
         });
-        
+
         let result = MarkdownGenerator::extract_tweet_content(&tweet_data).unwrap();
         assert_eq!(result.quote_tweet, Some("1234567890123456789".to_string()));
     }
@@ -1319,7 +1391,7 @@ mod tests {
                 "full_text": "Minimal tweet"
             }
         });
-        
+
         let result = MarkdownGenerator::extract_tweet_content(&tweet_data).unwrap();
         assert_eq!(result.id, "minimal");
         assert_eq!(result.text, "Minimal tweet");
@@ -1333,7 +1405,7 @@ mod tests {
     fn test_format_single_tweet_with_all_fields() {
         let config = create_test_config();
         let generator = MarkdownGenerator::new(config);
-        
+
         let tweet = TweetContent {
             id: "123".to_string(),
             text: "Complete tweet".to_string(),
@@ -1346,7 +1418,7 @@ mod tests {
             reply_to: Some("reply_user".to_string()),
             quote_tweet: Some("quote_id".to_string()),
         };
-        
+
         let formatted = generator.format_single_tweet(&tweet, 1).unwrap();
         assert!(formatted.contains("Complete tweet"));
         assert!(formatted.contains("test_user"));
@@ -1360,7 +1432,7 @@ mod tests {
     fn test_format_single_tweet_video_media() {
         let config = create_test_config();
         let generator = MarkdownGenerator::new(config);
-        
+
         let tweet = TweetContent {
             id: "123".to_string(),
             text: "Video tweet".to_string(),
@@ -1373,7 +1445,7 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         let formatted = generator.format_single_tweet(&tweet, 1).unwrap();
         assert!(formatted.contains("video"));
         assert!(formatted.contains("<video"));
@@ -1384,7 +1456,7 @@ mod tests {
     fn test_format_single_tweet_video_webm() {
         let config = create_test_config();
         let generator = MarkdownGenerator::new(config);
-        
+
         let tweet = TweetContent {
             id: "123".to_string(),
             text: "WebM video tweet".to_string(),
@@ -1397,7 +1469,7 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         let formatted = generator.format_single_tweet(&tweet, 1).unwrap();
         assert!(formatted.contains("video"));
         assert!(formatted.contains("<video"));
@@ -1409,7 +1481,7 @@ mod tests {
     fn test_format_single_tweet_video_mov() {
         let config = create_test_config();
         let generator = MarkdownGenerator::new(config);
-        
+
         let tweet = TweetContent {
             id: "123".to_string(),
             text: "MOV video tweet".to_string(),
@@ -1422,7 +1494,7 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         let formatted = generator.format_single_tweet(&tweet, 1).unwrap();
         assert!(formatted.contains("video"));
         assert!(formatted.contains("<video"));
@@ -1434,7 +1506,7 @@ mod tests {
     fn test_format_single_tweet_multiple_video_formats() {
         let config = create_test_config();
         let generator = MarkdownGenerator::new(config);
-        
+
         let tweet = TweetContent {
             id: "123".to_string(),
             text: "Multiple video formats".to_string(),
@@ -1451,7 +1523,7 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         let formatted = generator.format_single_tweet(&tweet, 1).unwrap();
         assert!(formatted.contains("type=\"video/mp4\""));
         assert!(formatted.contains("type=\"video/webm\""));
@@ -1462,12 +1534,12 @@ mod tests {
     fn test_save_markdown() {
         let temp_dir = tempfile::TempDir::new().unwrap();
         let output_file = temp_dir.path().join("test_output.md");
-        
+
         let mut config = create_test_config();
         config.markdown_output = output_file.to_str().unwrap().to_string();
-        
+
         let mut generator = MarkdownGenerator::new(config);
-        
+
         let tweet = TweetContent {
             id: "123".to_string(),
             text: "Test tweet".to_string(),
@@ -1480,10 +1552,10 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         generator.add_tweet(tweet);
         generator.save_markdown().unwrap();
-        
+
         assert!(output_file.exists());
         let content = std::fs::read_to_string(&output_file).unwrap();
         assert!(content.contains("Test tweet"));
@@ -1494,13 +1566,13 @@ mod tests {
     fn test_save_markdown_empty() {
         let temp_dir = tempfile::TempDir::new().unwrap();
         let output_file = temp_dir.path().join("empty_output.md");
-        
+
         let mut config = create_test_config();
         config.markdown_output = output_file.to_str().unwrap().to_string();
-        
+
         let generator = MarkdownGenerator::new(config);
         generator.save_markdown().unwrap();
-        
+
         assert!(output_file.exists());
         let content = std::fs::read_to_string(&output_file).unwrap();
         assert!(content.is_empty());
@@ -1510,12 +1582,12 @@ mod tests {
     fn test_save_markdown_creates_directory() {
         let temp_dir = tempfile::TempDir::new().unwrap();
         let output_file = temp_dir.path().join("subdir/test_output.md");
-        
+
         let mut config = create_test_config();
         config.markdown_output = output_file.to_str().unwrap().to_string();
-        
+
         let mut generator = MarkdownGenerator::new(config);
-        
+
         let tweet = TweetContent {
             id: "123".to_string(),
             text: "Test".to_string(),
@@ -1528,10 +1600,10 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         generator.add_tweet(tweet);
         generator.save_markdown().unwrap();
-        
+
         assert!(output_file.exists());
         assert!(output_file.parent().unwrap().exists());
     }
@@ -1540,7 +1612,7 @@ mod tests {
     fn test_format_single_tweet_no_username() {
         let config = create_test_config();
         let generator = MarkdownGenerator::new(config);
-        
+
         let tweet = TweetContent {
             id: "123".to_string(),
             text: "Tweet without username".to_string(),
@@ -1553,7 +1625,7 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         let formatted = generator.format_single_tweet(&tweet, 1).unwrap();
         assert!(formatted.contains("Tweet without username"));
         assert!(formatted.contains("unknown")); // 应该使用unknown作为默认用户名
@@ -1563,7 +1635,7 @@ mod tests {
     fn test_format_single_tweet_no_created_at() {
         let config = create_test_config();
         let generator = MarkdownGenerator::new(config);
-        
+
         let tweet = TweetContent {
             id: "123".to_string(),
             text: "Tweet without time".to_string(),
@@ -1576,7 +1648,7 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         let formatted = generator.format_single_tweet(&tweet, 1).unwrap();
         assert!(formatted.contains("Tweet without time"));
         // 不应该包含发布时间
@@ -1587,7 +1659,7 @@ mod tests {
     fn test_generate_markdown_multiple_media() {
         let config = create_test_config();
         let mut generator = MarkdownGenerator::new(config);
-        
+
         let tweet = TweetContent {
             id: "123".to_string(),
             text: "Multi media tweet".to_string(),
@@ -1604,7 +1676,7 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         generator.add_tweet(tweet);
         let markdown = generator.generate_markdown().unwrap();
         assert!(markdown.contains("image1.jpg"));
@@ -1616,7 +1688,7 @@ mod tests {
     fn test_generate_markdown_sorting_all_none() {
         let config = create_test_config();
         let mut generator = MarkdownGenerator::new(config);
-        
+
         let tweet1 = TweetContent {
             id: "1".to_string(),
             text: "No time 1".to_string(),
@@ -1629,7 +1701,7 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         let tweet2 = TweetContent {
             id: "2".to_string(),
             text: "No time 2".to_string(),
@@ -1642,7 +1714,7 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         generator.add_tweet(tweet1);
         generator.add_tweet(tweet2);
         let markdown = generator.generate_markdown().unwrap();
@@ -1655,7 +1727,7 @@ mod tests {
     fn test_generate_markdown_username_fallback() {
         let config = create_test_config();
         let mut generator = MarkdownGenerator::new(config);
-        
+
         let tweet = TweetContent {
             id: "123".to_string(),
             text: "Tweet".to_string(),
@@ -1668,7 +1740,7 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         generator.add_tweet(tweet);
         let markdown = generator.generate_markdown().unwrap();
         // 应该使用 "Unknown" 作为默认用户名
@@ -1679,7 +1751,7 @@ mod tests {
     fn test_format_single_tweet_image_media() {
         let config = create_test_config();
         let generator = MarkdownGenerator::new(config);
-        
+
         let tweet = TweetContent {
             id: "123".to_string(),
             text: "Image tweet".to_string(),
@@ -1692,7 +1764,7 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         let formatted = generator.format_single_tweet(&tweet, 1).unwrap();
         assert!(formatted.contains("image.jpg"));
         assert!(formatted.contains("<img"));
@@ -1703,7 +1775,7 @@ mod tests {
     fn test_format_single_tweet_retweet_no_user() {
         let config = create_test_config();
         let generator = MarkdownGenerator::new(config);
-        
+
         let tweet = TweetContent {
             id: "123".to_string(),
             text: "Retweet".to_string(),
@@ -1716,7 +1788,7 @@ mod tests {
             reply_to: None,
             quote_tweet: None,
         };
-        
+
         let formatted = generator.format_single_tweet(&tweet, 1).unwrap();
         assert!(formatted.contains("转推"));
     }

@@ -8,8 +8,7 @@ pub struct Updater {
 
 impl Updater {
     pub fn new() -> Result<Self> {
-        let client = reqwest::Client::builder()
-            .build()?;
+        let client = reqwest::Client::builder().build()?;
 
         Ok(Updater { client })
     }
@@ -26,14 +25,18 @@ impl Updater {
             return Ok(());
         }
 
-        println!("发现新版本: {} (当前版本: {})", latest_version, current_version);
+        println!(
+            "发现新版本: {} (当前版本: {})",
+            latest_version, current_version
+        );
         println!("请访问项目页面获取最新版本: https://github.com/HerbertGao/x_tweets_backup");
 
         Ok(())
     }
 
     async fn get_latest_version(&self) -> Result<String> {
-        let response = self.client
+        let response = self
+            .client
             .get("https://api.github.com/repos/HerbertGao/x_tweets_backup/releases/latest")
             .header("User-Agent", "x_tweets_backup")
             .send()
@@ -44,7 +47,8 @@ impl Updater {
         }
 
         let data: Value = response.json().await?;
-        let tag_name = data.get("tag_name")
+        let tag_name = data
+            .get("tag_name")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("无法解析版本信息"))?;
 
@@ -82,7 +86,7 @@ mod tests {
         let current = "1.0.0";
         let latest = "1.0.0";
         assert_eq!(current == latest, true);
-        
+
         let latest_new = "1.0.1";
         assert_eq!(current == latest_new, false);
     }
@@ -93,11 +97,11 @@ mod tests {
         let tag_with_prefix = "v1.0.0";
         let version = tag_with_prefix.trim_start_matches('v');
         assert_eq!(version, "1.0.0");
-        
+
         let tag_without_prefix = "1.0.0";
         let version2 = tag_without_prefix.trim_start_matches('v');
         assert_eq!(version2, "1.0.0");
-        
+
         // 测试版本比较（模拟实际场景）
         let current_version = "1.0.0";
         let github_tag = "v1.0.0";

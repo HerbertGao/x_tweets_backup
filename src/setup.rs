@@ -4,11 +4,11 @@ use regex::Regex;
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::path::Path;
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 
 #[derive(Parser, Clone)]
 #[command(name = "setup")]
@@ -77,7 +77,9 @@ fn parse_curl_command(curl_command: &str) -> Result<ParsedCurl> {
     // 解析headers
     for cap in header_regex.captures_iter(curl_command) {
         // 匹配组1是单引号内容，匹配组2是双引号内容
-        let header = cap.get(1).or_else(|| cap.get(2))
+        let header = cap
+            .get(1)
+            .or_else(|| cap.get(2))
             .map(|m| m.as_str())
             .ok_or_else(|| anyhow::anyhow!("无法解析header"))?;
         let header_lower = header.to_lowercase();
@@ -104,15 +106,15 @@ fn parse_curl_command(curl_command: &str) -> Result<ParsedCurl> {
     // 解析cookie
     let cookie_str = if let Some(cap) = cookie_regex.captures(curl_command) {
         // 匹配组1是单引号内容，匹配组2是双引号内容
-        cap.get(1).or_else(|| cap.get(2))
+        cap.get(1)
+            .or_else(|| cap.get(2))
             .map(|m| m.as_str().to_string())
             .ok_or_else(|| anyhow::anyhow!("无法解析cookie参数"))?
     } else {
         return Err(anyhow::anyhow!("无法找到cookie参数"));
     };
 
-    let bearer_token = bearer_token
-        .ok_or_else(|| anyhow::anyhow!("无法解析Bearer Token"))?;
+    let bearer_token = bearer_token.ok_or_else(|| anyhow::anyhow!("无法解析Bearer Token"))?;
 
     Ok(ParsedCurl {
         bearer_token,
@@ -201,7 +203,7 @@ fn save_private_tokens(
         }
         opts.open(filename)?
     };
-    
+
     // 在 Unix 系统上确保权限正确设置（双重保险）
     #[cfg(unix)]
     {
@@ -209,10 +211,10 @@ fn save_private_tokens(
         perms.set_mode(0o600);
         fs::set_permissions(filename, perms)?;
     }
-    
+
     file.write_all(content.as_bytes())?;
     file.sync_all()?;
-    
+
     println!("生成 {} 成功！", filename);
     println!("已设置文件权限为 600 (仅所有者可读写)");
     Ok(())
@@ -233,12 +235,15 @@ curl 'https://x.com/i/api/graphql/test' \
   -H 'X-Client-Transaction-ID: test-transaction' \
   -b 'twid=u%3D123; auth_token=test_auth; ct0=test_ct0; personalization_id=test_pid'
 "#;
-        
+
         let result = parse_curl_command(curl_command).unwrap();
         assert_eq!(result.bearer_token, "test_bearer_token");
         assert_eq!(result.user_agent, Some("Mozilla/5.0".to_string()));
         assert_eq!(result.x_client_uuid, Some("test-uuid".to_string()));
-        assert_eq!(result.x_client_transaction_id, Some("test-transaction".to_string()));
+        assert_eq!(
+            result.x_client_transaction_id,
+            Some("test-transaction".to_string())
+        );
         assert!(result.cookie_str.contains("twid"));
     }
 
@@ -249,7 +254,7 @@ curl 'https://x.com/i/api/graphql/test' \
   -H 'Authorization: Bearer test_bearer' \
   -b 'auth_token=test_auth; ct0=test_ct0; personalization_id=test_pid; twid=123'
 "#;
-        
+
         let result = parse_curl_command(curl_command).unwrap();
         assert_eq!(result.bearer_token, "test_bearer");
         assert!(result.cookie_str.contains("auth_token"));
@@ -261,7 +266,7 @@ curl 'https://x.com/i/api/graphql/test' \
 curl 'https://x.com/i/api/graphql/test' \
   -b 'auth_token=test_auth'
 "#;
-        
+
         let result = parse_curl_command(curl_command);
         assert!(result.is_err());
     }
@@ -269,7 +274,7 @@ curl 'https://x.com/i/api/graphql/test' \
     #[test]
     fn test_parse_cookies() {
         let cookie_str = "twid=u%3D123; auth_token=test_auth_token; ct0=test_ct0_token; personalization_id=test_pid_value";
-        
+
         let result = parse_cookies(cookie_str).unwrap();
         assert_eq!(result.twid, "123"); // 应该去掉 u%3D 前缀
         assert_eq!(result.auth_token, "test_auth_token");
@@ -279,8 +284,9 @@ curl 'https://x.com/i/api/graphql/test' \
 
     #[test]
     fn test_parse_cookies_with_spaces() {
-        let cookie_str = "twid=123; auth_token=test_auth; ct0=test_ct0; personalization_id=test_pid";
-        
+        let cookie_str =
+            "twid=123; auth_token=test_auth; ct0=test_ct0; personalization_id=test_pid";
+
         let result = parse_cookies(cookie_str).unwrap();
         assert_eq!(result.twid, "123");
         assert_eq!(result.auth_token, "test_auth");
@@ -289,15 +295,16 @@ curl 'https://x.com/i/api/graphql/test' \
     #[test]
     fn test_parse_cookies_missing_field() {
         let cookie_str = "auth_token=test_auth; ct0=test_ct0";
-        
+
         let result = parse_cookies(cookie_str);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_parse_cookies_twid_with_u_prefix() {
-        let cookie_str = "twid=u=123; auth_token=test_auth; ct0=test_ct0; personalization_id=test_pid";
-        
+        let cookie_str =
+            "twid=u=123; auth_token=test_auth; ct0=test_ct0; personalization_id=test_pid";
+
         let result = parse_cookies(cookie_str).unwrap();
         assert_eq!(result.twid, "123");
     }
@@ -306,7 +313,7 @@ curl 'https://x.com/i/api/graphql/test' \
     fn test_save_private_tokens() {
         let temp_dir = TempDir::new().unwrap();
         let token_file = temp_dir.path().join("tokens.env");
-        
+
         save_private_tokens(
             "user123",
             "bearer_token",
@@ -317,8 +324,9 @@ curl 'https://x.com/i/api/graphql/test' \
             "uuid_value",
             "transaction_id",
             token_file.to_str().unwrap(),
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let content = std::fs::read_to_string(&token_file).unwrap();
         assert!(content.contains("USER_ID=user123"));
         assert!(content.contains("BEARER_TOKEN=bearer_token"));
@@ -334,13 +342,15 @@ curl 'https://x.com/i/api/graphql/test' \
   -H 'Authorization: Bearer "quoted_token"' \
   -b 'auth_token=test; ct0=test; personalization_id=test; twid=123'
 "#;
-        
+
         let result = parse_curl_command(curl_command);
         // 应该能处理带引号的token
         // 测试应该验证解析结果是否正确，而不是只检查是否有结果
         if let Ok(parsed) = result {
             // 验证带引号的token被正确处理（检查bearer_token字段不为空）
-            assert!(!parsed.bearer_token.is_empty() || parsed.bearer_token.contains("quoted_token"));
+            assert!(
+                !parsed.bearer_token.is_empty() || parsed.bearer_token.contains("quoted_token")
+            );
         }
     }
 
@@ -355,12 +365,15 @@ curl "https://x.com/i/api/graphql/test" \
   -H "X-Client-Transaction-ID: test-transaction" \
   -b "twid=u%3D123; auth_token=test_auth; ct0=test_ct0; personalization_id=test_pid"
 "#;
-        
+
         let result = parse_curl_command(curl_command).unwrap();
         assert_eq!(result.bearer_token, "test_bearer_token");
         assert_eq!(result.user_agent, Some("Mozilla/5.0".to_string()));
         assert_eq!(result.x_client_uuid, Some("test-uuid".to_string()));
-        assert_eq!(result.x_client_transaction_id, Some("test-transaction".to_string()));
+        assert_eq!(
+            result.x_client_transaction_id,
+            Some("test-transaction".to_string())
+        );
         assert!(result.cookie_str.contains("twid"));
     }
 
@@ -372,7 +385,7 @@ curl 'https://x.com/i/api/graphql/test' \
   -H "Authorization: Bearer test_bearer" \
   -b 'auth_token=test; ct0=test; personalization_id=test; twid=123'
 "#;
-        
+
         let result = parse_curl_command(curl_command).unwrap();
         assert_eq!(result.bearer_token, "test_bearer");
         assert!(result.cookie_str.contains("auth_token"));
@@ -386,7 +399,7 @@ curl "https://x.com/i/api/graphql/test" \
   -H "Authorization: Bearer test_bearer" \
   -b "auth_token=test_auth; ct0=test_ct0; personalization_id=test_pid; twid=123"
 "#;
-        
+
         let result = parse_curl_command(curl_command).unwrap();
         assert_eq!(result.bearer_token, "test_bearer");
         assert!(result.cookie_str.contains("auth_token"));
@@ -394,8 +407,9 @@ curl "https://x.com/i/api/graphql/test" \
 
     #[test]
     fn test_parse_cookies_with_quotes() {
-        let cookie_str = r#"twid="123"; auth_token="test_auth"; ct0="test_ct0"; personalization_id="test_pid""#;
-        
+        let cookie_str =
+            r#"twid="123"; auth_token="test_auth"; ct0="test_ct0"; personalization_id="test_pid""#;
+
         let result = parse_cookies(cookie_str).unwrap();
         assert_eq!(result.twid, "123");
         assert_eq!(result.auth_token, "test_auth");
@@ -404,7 +418,7 @@ curl "https://x.com/i/api/graphql/test" \
     #[test]
     fn test_parse_cookies_empty_values() {
         let cookie_str = "twid=; auth_token=; ct0=; personalization_id=";
-        
+
         let result = parse_cookies(cookie_str).unwrap();
         assert_eq!(result.twid, "");
         assert_eq!(result.auth_token, "");

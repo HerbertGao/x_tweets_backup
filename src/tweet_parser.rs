@@ -30,7 +30,7 @@ pub fn extract_media_urls(tweet_obj: &Value) -> Result<Vec<String>> {
     let mut media_urls = Vec::new();
 
     let legacy = tweet_obj.get("legacy").unwrap_or(&Value::Null);
-    
+
     // 从 extended_entities 或 entities 中提取媒体列表
     let media_list = legacy
         .get("extended_entities")
@@ -46,17 +46,21 @@ pub fn extract_media_urls(tweet_obj: &Value) -> Result<Vec<String>> {
     if let Some(media_array) = media_list {
         for media in media_array {
             let media_type = media.get("type").and_then(|t| t.as_str()).unwrap_or("");
-            
+
             match media_type {
                 "video" | "animated_gif" => {
                     // 视频和动画 GIF 使用相同的 video_info 结构
                     if let Some(video_info) = media.get("video_info") {
-                        if let Some(variants) = video_info.get("variants").and_then(|v| v.as_array()) {
+                        if let Some(variants) =
+                            video_info.get("variants").and_then(|v| v.as_array())
+                        {
                             let best_variant = variants
                                 .iter()
                                 .filter(|v| v.get("bitrate").is_some())
-                                .max_by_key(|v| v.get("bitrate").and_then(|b| b.as_u64()).unwrap_or(0));
-                            
+                                .max_by_key(|v| {
+                                    v.get("bitrate").and_then(|b| b.as_u64()).unwrap_or(0)
+                                });
+
                             if let Some(variant) = best_variant {
                                 if let Some(url) = variant.get("url").and_then(|u| u.as_str()) {
                                     media_urls.push(url.to_string());
@@ -94,7 +98,8 @@ pub fn extract_tweet_timestamp_seconds(tweet_obj: &Value) -> Result<Option<i64>>
 
     // 尝试 created_at 字符串，如 "Thu Apr 06 15:24:15 +0000 2017"
     if let Some(created_at_str) = legacy.get("created_at").and_then(|v| v.as_str()) {
-        if let Ok(dt) = chrono::DateTime::parse_from_str(created_at_str, "%a %b %d %H:%M:%S %z %Y") {
+        if let Ok(dt) = chrono::DateTime::parse_from_str(created_at_str, "%a %b %d %H:%M:%S %z %Y")
+        {
             return Ok(Some(dt.timestamp()));
         }
     }
@@ -118,7 +123,8 @@ pub fn extract_tweet_timestamp_datetime(tweet_obj: &Value) -> Result<Option<Date
 
     // 尝试 created_at 字符串，如 "Thu Apr 06 15:24:15 +0000 2017"
     if let Some(created_at_str) = legacy.get("created_at").and_then(|v| v.as_str()) {
-        if let Ok(dt) = chrono::DateTime::parse_from_str(created_at_str, "%a %b %d %H:%M:%S %z %Y") {
+        if let Ok(dt) = chrono::DateTime::parse_from_str(created_at_str, "%a %b %d %H:%M:%S %z %Y")
+        {
             return Ok(Some(dt.with_timezone(&Utc)));
         }
     }
@@ -283,10 +289,13 @@ mod tests {
                 }
             }
         });
-        
+
         let result = extract_tweet_object(&tweet);
         assert!(result.is_some());
-        assert_eq!(result.unwrap().get("rest_id").and_then(|v| v.as_str()), Some("123"));
+        assert_eq!(
+            result.unwrap().get("rest_id").and_then(|v| v.as_str()),
+            Some("123")
+        );
     }
 
     #[test]
@@ -296,10 +305,13 @@ mod tests {
                 "rest_id": "456"
             }
         });
-        
+
         let result = extract_tweet_object(&tweet);
         assert!(result.is_some());
-        assert_eq!(result.unwrap().get("rest_id").and_then(|v| v.as_str()), Some("456"));
+        assert_eq!(
+            result.unwrap().get("rest_id").and_then(|v| v.as_str()),
+            Some("456")
+        );
     }
 
     #[test]
@@ -307,10 +319,13 @@ mod tests {
         let tweet = json!({
             "rest_id": "789"
         });
-        
+
         let result = extract_tweet_object(&tweet);
         assert!(result.is_some());
-        assert_eq!(result.unwrap().get("rest_id").and_then(|v| v.as_str()), Some("789"));
+        assert_eq!(
+            result.unwrap().get("rest_id").and_then(|v| v.as_str()),
+            Some("789")
+        );
     }
 
     #[test]
@@ -327,7 +342,7 @@ mod tests {
                 }
             }
         });
-        
+
         let result = extract_media_urls(&tweet_obj).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], "https://example.com/image.jpg");
@@ -358,7 +373,7 @@ mod tests {
                 }
             }
         });
-        
+
         let result = extract_media_urls(&tweet_obj).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], "https://example.com/video_hd.mp4"); // 应该选择最高bitrate
@@ -390,7 +405,7 @@ mod tests {
                 }
             }
         });
-        
+
         let result = extract_media_urls(&tweet_obj).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], "https://example.com/gif_hd.mp4"); // 应该选择最高bitrate
@@ -433,7 +448,7 @@ mod tests {
                 }
             }
         });
-        
+
         let result = extract_media_urls(&tweet_obj).unwrap();
         assert_eq!(result.len(), 3);
         assert!(result.contains(&"https://example.com/photo.jpg".to_string()));
@@ -455,7 +470,7 @@ mod tests {
                 }
             }
         });
-        
+
         let (username, display_name) = extract_user_info(&tweet_obj).unwrap();
         assert_eq!(username, Some("test_user".to_string()));
         assert_eq!(display_name, Some("Test User".to_string()));
@@ -470,7 +485,7 @@ mod tests {
                 "name": "Legacy User"
             }
         });
-        
+
         let (username, display_name) = extract_user_info(&tweet_obj).unwrap();
         assert_eq!(username, Some("legacy_user".to_string()));
         assert_eq!(display_name, Some("Legacy User".to_string()));
@@ -489,7 +504,7 @@ mod tests {
                 }
             }
         });
-        
+
         let (username, display_name) = extract_user_info(&tweet_obj).unwrap();
         assert_eq!(username, Some("no_core_user".to_string()));
         assert_eq!(display_name, Some("No Core User".to_string()));
@@ -508,7 +523,7 @@ mod tests {
                 }
             }
         });
-        
+
         let (username, display_name) = extract_user_info(&tweet_obj).unwrap();
         assert_eq!(username, Some("alt_core_user".to_string()));
         assert_eq!(display_name, Some("Alt Core User".to_string()));
@@ -521,7 +536,7 @@ mod tests {
                 "created_at_ms": "1609459200000"
             }
         });
-        
+
         let result = extract_tweet_timestamp_seconds(&tweet_obj).unwrap();
         assert_eq!(result, Some(1609459200));
     }
@@ -533,9 +548,8 @@ mod tests {
                 "created_at_ms": "1609459200000"
             }
         });
-        
+
         let result = extract_tweet_timestamp_datetime(&tweet_obj).unwrap();
         assert!(result.is_some());
     }
 }
-
