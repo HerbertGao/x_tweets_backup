@@ -27,6 +27,7 @@ indicatif = "0.17"
 urlencoding = "2.1"
 filetime = "0.2"
 chrono = { version = "0.4", features = ["serde"] }
+pathdiff = "0.2"
 
 [dev-dependencies]
 tempfile = "3.8"

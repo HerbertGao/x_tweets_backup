@@ -212,8 +212,42 @@ impl MarkdownGenerator {
             format!("[{}][{}][{}]", username_str, tweet.id, clean_filename)
         };
         
-        // 构建相对于Markdown文件的路径（使用 ./downloads/ 而不是 ../downloads/）
-        let relative_path = format!("./downloads/{}", local_filename);
+        // 计算从 markdown 文件到下载目录的相对路径
+        let markdown_path = Path::new(&self.config.markdown_output);
+        let download_dir = Path::new(&self.config.download_dir);
+        
+        // 获取 markdown 文件的父目录
+        let markdown_parent = markdown_path.parent()
+            .unwrap_or_else(|| Path::new("."));
+        
+        // 计算相对路径
+        let relative_path = if let Some(rel_path) = pathdiff::diff_paths(download_dir, markdown_parent) {
+            // 如果计算成功，使用计算出的相对路径
+            if let Some(rel_str) = rel_path.to_str() {
+                // 确保路径以 ./ 开头（相对路径）
+                if rel_str.starts_with("..") {
+                    format!("{}/{}", rel_str, local_filename)
+                } else if rel_str == "." || rel_str.is_empty() {
+                    // 如果下载目录和 markdown 在同一目录，使用当前目录
+                    format!("./{}/{}", download_dir.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("downloads"), local_filename)
+                } else {
+                    format!("./{}/{}", rel_str, local_filename)
+                }
+            } else {
+                // 如果路径包含非 UTF-8 字符，回退到简单路径
+                format!("./{}/{}", download_dir.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("downloads"), local_filename)
+            }
+        } else {
+            // 如果路径计算失败（例如跨磁盘），使用下载目录的最后一个组件
+            format!("./{}/{}", download_dir.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("downloads"), local_filename)
+        };
+        
         relative_path
     }
 
@@ -800,6 +834,37 @@ mod tests {
         assert!(path.contains("test_user"));
         assert!(path.contains("123456"));
         assert!(path.contains("image.jpg"));
+    }
+
+    #[test]
+    fn test_generate_local_media_path_uses_config_download_dir() {
+        // 测试自定义下载目录的情况
+        let mut config = create_test_config();
+        config.download_dir = "custom/media".to_string();
+        config.markdown_output = "custom/output.md".to_string();
+        let generator = MarkdownGenerator::new(config);
+        
+        let tweet = TweetContent {
+            id: "123456".to_string(),
+            text: "Test".to_string(),
+            created_at: None,
+            username: Some("test_user".to_string()),
+            display_name: None,
+            media_urls: vec![],
+            is_retweet: false,
+            retweeted_by: None,
+            reply_to: None,
+            quote_tweet: None,
+        };
+        
+        let path = generator.generate_local_media_path(&tweet, 0, "https://example.com/image.jpg");
+        // 应该使用相对路径指向 custom/media 目录
+        assert!(path.contains("media"));
+        assert!(path.contains("test_user"));
+        assert!(path.contains("123456"));
+        assert!(path.contains("image.jpg"));
+        // 不应该硬编码 ./downloads/
+        assert!(!path.contains("./downloads/"));
     }
 
     #[test]
