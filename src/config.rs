@@ -59,7 +59,7 @@ impl Config {
 
             // 从环境变量加载
             count: env::var("COUNT").unwrap_or_else(|_| "20".to_string()),
-            all: env::var("ALL").unwrap_or_else(|_| "False".to_string()).to_lowercase() == "true",
+            all: env::var("ALL").unwrap_or_else(|_| "false".to_string()).to_lowercase() == "true",
             download_dir: env::var("DOWNLOAD_DIR").unwrap_or_else(|_| "data/downloads".to_string()),
             download_record: env::var("DOWNLOAD_RECORD").unwrap_or_else(|_| "data/downloaded_tweet_ids.txt".to_string()),
             file_format: env::var("FILE_FORMAT").unwrap_or_else(|_| "{USERNAME} {ID}".to_string()),
@@ -72,10 +72,10 @@ impl Config {
             only_self: env::var("ONLY_SELF").unwrap_or_else(|_| "false".to_string()).to_lowercase() == "true",
 
                 // Markdown输出配置
-                save_markdown: env::var("SAVE_MARKDOWN").unwrap_or_else(|_| "True".to_string()).to_lowercase() == "true",
+                save_markdown: env::var("SAVE_MARKDOWN").unwrap_or_else(|_| "true".to_string()).to_lowercase() == "true",
                 markdown_output: env::var("MARKDOWN_OUTPUT").unwrap_or_else(|_| "data/tweets_backup.md".to_string()),
 
-                // 调试配置
+                // 调试配置（默认关闭以保护敏感信息）
                 debug_logs: env::var("DEBUG_LOGS").unwrap_or_else(|_| "false".to_string()).to_lowercase() == "true",
         })
     }

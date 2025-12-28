@@ -4,6 +4,15 @@ use serde_json::{json, Value};
 
 use crate::config::Config;
 
+// 调试日志辅助宏
+macro_rules! debug_log {
+    ($config:expr, $($arg:tt)*) => {
+        if $config.debug_logs {
+            println!($($arg)*);
+        }
+    };
+}
+
 #[derive(Debug)]
 pub struct XApi {
     client: Client,
@@ -37,8 +46,8 @@ impl XApi {
             variables_encoded, features_encoded, fieldtoggles_encoded
         );
 
-        println!("[DEBUG] 查询用户信息: {}", url);
-        println!("[DEBUG] 请求参数: variables={}", variables_str);
+        debug_log!(self.config, "[DEBUG] 查询用户信息: {}", url);
+        debug_log!(self.config, "[DEBUG] 请求参数: variables={}", variables_str);
 
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert("Authorization", format!("Bearer {}", self.config.bearer_token).parse()?);
@@ -46,35 +55,37 @@ impl XApi {
         headers.insert("X-Csrf-Token", self.config.ct0.parse()?);
         headers.insert("User-Agent", self.config.user_agent.parse()?);
 
-        println!("[DEBUG] 请求头信息:");
+        debug_log!(self.config, "[DEBUG] 请求头信息:");
         for (key, value) in &headers {
             if key.as_str() == "authorization" {
-                println!("[DEBUG]   {}: Bearer ***", key);
+                debug_log!(self.config, "[DEBUG]   {}: Bearer ***", key);
             } else if key.as_str() == "cookie" {
-                println!("[DEBUG]   {}: ***", key);
+                debug_log!(self.config, "[DEBUG]   {}: ***", key);
             } else {
-                println!("[DEBUG]   {}: {:?}", key, value);
+                debug_log!(self.config, "[DEBUG]   {}: {:?}", key, value);
             }
         }
 
-        println!("[DEBUG] 发送请求到: {}", url);
+        debug_log!(self.config, "[DEBUG] 发送请求到: {}", url);
         let response = self.client
             .get(&url)
             .headers(headers)
             .send()
             .await?;
 
-        println!("[DEBUG] 响应状态: {}", response.status());
+        debug_log!(self.config, "[DEBUG] 响应状态: {}", response.status());
         
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await?;
-            println!("[DEBUG] 错误响应内容: {}", text);
+            // 错误信息始终记录，但不包含敏感数据
+            eprintln!("[ERROR] 查询用户信息失败: {} (状态码: {})", clean_username, status);
+            debug_log!(self.config, "[DEBUG] 错误响应内容: {}", text);
             return Err(anyhow::anyhow!("查询用户信息失败: {} {}", status, text));
         }
 
         let data: Value = response.json().await?;
-        println!("[DEBUG] 响应数据: {}", serde_json::to_string_pretty(&data).unwrap_or_else(|_| "无法解析JSON".to_string()));
+        debug_log!(self.config, "[DEBUG] 响应数据: {}", serde_json::to_string_pretty(&data).unwrap_or_else(|_| "无法解析JSON".to_string()));
 
         // 解析用户ID
         if let Some(user_id) = data
@@ -99,11 +110,12 @@ impl XApi {
 
         loop {
             page_count += 1;
-            println!("[DEBUG] 开始获取第 {} 页数据", page_count);
+            debug_log!(self.config, "[DEBUG] 开始获取第 {} 页数据", page_count);
             
             // 防止无限循环
             if page_count > MAX_PAGES {
-                println!("[DEBUG] 已达到最大页数限制 ({}), 停止分页", MAX_PAGES);
+                eprintln!("[WARNING] 已达到最大页数限制 ({}), 停止分页。这可能是由于分页逻辑问题导致的。", MAX_PAGES);
+                debug_log!(self.config, "[DEBUG] 已达到最大页数限制 ({}), 停止分页", MAX_PAGES);
                 break;
             }
             // 使用指定的目标用户ID，如果没有指定则使用当前认证用户ID
@@ -113,7 +125,7 @@ impl XApi {
                 &self.config.user_id
             };
             
-            println!("[DEBUG] 使用用户ID: {}", user_id);
+            debug_log!(self.config, "[DEBUG] 使用用户ID: {}", user_id);
             let mut variables = json!({
                 "userId": user_id,
                 "count": self.config.count.parse::<i32>()?,
@@ -136,52 +148,53 @@ impl XApi {
                 variables_encoded, features_encoded, fieldtoggles_encoded
             );
 
-            println!("[DEBUG] 获取用户推文: {}", url);
-            println!("[DEBUG] 请求参数: variables={}", variables_str);
+            debug_log!(self.config, "[DEBUG] 获取用户推文: {}", url);
+            debug_log!(self.config, "[DEBUG] 请求参数: variables={}", variables_str);
 
-            let mut headers = reqwest::header::HeaderMap::new();
-            headers.insert("Authorization", format!("Bearer {}", self.config.bearer_token).parse()?);
-            headers.insert("Cookie", format!("auth_token={}; ct0={}", self.config.auth_token, self.config.ct0).parse()?);
-            headers.insert("X-Csrf-Token", self.config.ct0.parse()?);
-            headers.insert("User-Agent", self.config.user_agent.parse()?);
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("Authorization", format!("Bearer {}", self.config.bearer_token).parse()?);
+        headers.insert("Cookie", format!("auth_token={}; ct0={}", self.config.auth_token, self.config.ct0).parse()?);
+        headers.insert("X-Csrf-Token", self.config.ct0.parse()?);
+        headers.insert("User-Agent", self.config.user_agent.parse()?);
 
-            println!("[DEBUG] 请求头信息:");
-            for (key, value) in &headers {
-                if key.as_str() == "authorization" {
-                    println!("[DEBUG]   {}: Bearer ***", key);
-                } else if key.as_str() == "cookie" {
-                    println!("[DEBUG]   {}: ***", key);
-                } else {
-                    println!("[DEBUG]   {}: {:?}", key, value);
-                }
+        debug_log!(self.config, "[DEBUG] 请求头信息:");
+        for (key, value) in &headers {
+            if key.as_str() == "authorization" {
+                debug_log!(self.config, "[DEBUG]   {}: Bearer ***", key);
+            } else if key.as_str() == "cookie" {
+                debug_log!(self.config, "[DEBUG]   {}: ***", key);
+            } else {
+                debug_log!(self.config, "[DEBUG]   {}: {:?}", key, value);
             }
+        }
 
-            println!("[DEBUG] 发送请求到: {}", url);
+        debug_log!(self.config, "[DEBUG] 发送请求到: {}", url);
 
-            let response = self.client
-                .get(&url)
-                .headers(headers)
-                .send()
-                .await?;
+        let response = self.client
+            .get(&url)
+            .headers(headers)
+            .send()
+            .await?;
 
-            println!("[DEBUG] 响应状态: {}", response.status());
-            
-            if !response.status().is_success() {
-                let status = response.status();
-                let text = response.text().await?;
-                println!("[DEBUG] 错误响应内容: {}", text);
-                return Err(anyhow::anyhow!("API 请求失败: {} {}", status, text));
-            }
+        debug_log!(self.config, "[DEBUG] 响应状态: {}", response.status());
+        
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await?;
+            eprintln!("[ERROR] API 请求失败: 状态码 {}", status);
+            debug_log!(self.config, "[DEBUG] 错误响应内容: {}", text);
+            return Err(anyhow::anyhow!("API 请求失败: {} {}", status, text));
+        }
 
-            let data: Value = response.json().await?;
-            println!("[DEBUG] 响应数据: {}", serde_json::to_string_pretty(&data).unwrap_or_else(|_| "无法解析JSON".to_string()));
+        let data: Value = response.json().await?;
+        debug_log!(self.config, "[DEBUG] 响应数据: {}", serde_json::to_string_pretty(&data).unwrap_or_else(|_| "无法解析JSON".to_string()));
 
             let (tweets, new_cursor) = self.parse_user_tweets_response(&data)?;
-            println!("[DEBUG] 本页获取到 {} 条 tweet，cursor: {:?}", tweets.len(), new_cursor);
+            debug_log!(self.config, "[DEBUG] 本页获取到 {} 条 tweet，cursor: {:?}", tweets.len(), new_cursor);
 
             // 如果没有获取到新推文，停止分页
             if tweets.is_empty() {
-                println!("[DEBUG] 没有获取到新推文，停止分页");
+                debug_log!(self.config, "[DEBUG] 没有获取到新推文，停止分页");
                 break;
             }
 
@@ -218,22 +231,22 @@ impl XApi {
                 if let Some(tweet_id) = tweet_id {
                     if seen_tweet_ids.contains(tweet_id) {
                         duplicate_count += 1;
-                        println!("[DEBUG] 发现重复推文: {}", tweet_id);
+                        debug_log!(self.config, "[DEBUG] 发现重复推文: {}", tweet_id);
                     } else {
                         seen_tweet_ids.insert(tweet_id.to_string());
                         new_tweets.push(tweet.clone());
-                        println!("[DEBUG] 发现新推文: {}", tweet_id);
+                        debug_log!(self.config, "[DEBUG] 发现新推文: {}", tweet_id);
                     }
                 } else {
-                    println!("[DEBUG] 跳过无法识别ID的推文节点: {}", serde_json::to_string(&tweet).unwrap_or_else(|_| "<unserializable>".to_string()));
+                    debug_log!(self.config, "[DEBUG] 跳过无法识别ID的推文节点: {}", serde_json::to_string(&tweet).unwrap_or_else(|_| "<unserializable>".to_string()));
                 }
             }
             
-            println!("[DEBUG] 本页新推文: {} 条，重复推文: {} 条", new_tweets.len(), duplicate_count);
+            debug_log!(self.config, "[DEBUG] 本页新推文: {} 条，重复推文: {} 条", new_tweets.len(), duplicate_count);
             
             // 如果所有推文都是重复的，停止分页
             if new_tweets.is_empty() {
-                println!("[DEBUG] 本页没有新推文，停止分页");
+                debug_log!(self.config, "[DEBUG] 本页没有新推文，停止分页");
                 break;
             }
 
@@ -246,14 +259,14 @@ impl XApi {
 
             // 如果没有新的 cursor 或新 cursor 与上一次相同，则认为没有更多数据
             if new_cursor.is_none() {
-                println!("[DEBUG] 没有新的cursor，停止分页");
+                debug_log!(self.config, "[DEBUG] 没有新的cursor，停止分页");
                 break;
             }
             
             if let Some(ref new_cursor_val) = new_cursor {
                 if let Some(ref old_cursor_val) = cursor {
                     if new_cursor_val == old_cursor_val {
-                        println!("[DEBUG] cursor值相同，停止分页");
+                        debug_log!(self.config, "[DEBUG] cursor值相同，停止分页");
                         break;
                     }
                 }
@@ -287,11 +300,11 @@ impl XApi {
                             if let Some(entry_id) = entry.get("entryId").and_then(|id| id.as_str()) {
                                 if entry_id.starts_with("profile-conversation-") {
                                     // 这是对话模块，提取其中的所有推文
-                                    println!("[DEBUG] 找到对话模块: {}", entry_id);
+                                    debug_log!(self.config, "[DEBUG] 找到对话模块: {}", entry_id);
                                     let conversation_tweets = self.extract_tweets_from_conversation_module(entry);
                                     tweets.extend(conversation_tweets);
                                 } else if entry_id.starts_with("tweet-") {
-                                    println!("[DEBUG] 找到推文: {}", entry_id);
+                                    debug_log!(self.config, "[DEBUG] 找到推文: {}", entry_id);
                                     tweets.push(entry.clone());
                                 } else if entry_id.starts_with("cursor-bottom-") {
                                     new_cursor = entry
@@ -299,7 +312,7 @@ impl XApi {
                                         .and_then(|c| c.get("value"))
                                         .and_then(|v| v.as_str())
                                         .map(|s| s.to_string());
-                                    println!("[DEBUG] 找到cursor: {}", new_cursor.as_deref().unwrap_or("None"));
+                                    debug_log!(self.config, "[DEBUG] 找到cursor: {}", new_cursor.as_deref().unwrap_or("None"));
                                 }
                             }
                         }
@@ -310,7 +323,7 @@ impl XApi {
                     if let Some(entry) = instruction.get("entry") {
                         if let Some(entry_id) = entry.get("entryId").and_then(|id| id.as_str()) {
                             if entry_id.starts_with("tweet-") {
-                                println!("[DEBUG] 找到置顶推文: {}", entry_id);
+                                debug_log!(self.config, "[DEBUG] 找到置顶推文: {}", entry_id);
                                 tweets.push(entry.clone());
                             }
                         }
@@ -333,7 +346,7 @@ impl XApi {
                         if let Some(item_content) = item_obj.get("itemContent") {
                             if let Some(tweet_results) = item_content.get("tweet_results") {
                                 if let Some(result) = tweet_results.get("result") {
-                                    println!("[DEBUG] 从对话模块提取推文: {}", result.get("rest_id").and_then(|id| id.as_str()).unwrap_or("unknown"));
+                                    debug_log!(self.config, "[DEBUG] 从对话模块提取推文: {}", result.get("rest_id").and_then(|id| id.as_str()).unwrap_or("unknown"));
                                     tweets.push(result.clone());
                                 }
                             }

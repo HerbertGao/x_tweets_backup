@@ -40,6 +40,13 @@ cargo build --release
 
 这将自动解析curl命令并提取必要的认证信息。
 
+> ⚠️ **安全警告**: 
+> - `data/private_tokens.env` 文件包含敏感认证信息，请确保：
+>   - 设置文件权限为 `chmod 600 data/private_tokens.env`
+>   - 不要将此文件提交到版本控制系统
+>   - 不要与他人分享此文件
+> - `DEBUG_LOGS=true` 会输出敏感信息（包括认证令牌和用户数据），默认已关闭，仅在调试时启用
+
 ### 2. 配置环境变量
 
 复制 `env.example` 为 `.env` 并根据需要修改配置：

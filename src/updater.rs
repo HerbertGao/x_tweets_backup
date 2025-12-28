@@ -44,11 +44,14 @@ impl Updater {
         }
 
         let data: Value = response.json().await?;
-        let version = data.get("tag_name")
+        let tag_name = data.get("tag_name")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("无法解析版本信息"))?;
 
-        Ok(version.to_string())
+        // 移除 "v" 前缀（如果存在），以便与 CARGO_PKG_VERSION 比较
+        let version = tag_name.trim_start_matches('v').to_string();
+
+        Ok(version)
     }
 }
 
@@ -82,6 +85,24 @@ mod tests {
         
         let latest_new = "1.0.1";
         assert_eq!(current == latest_new, false);
+    }
+
+    #[test]
+    fn test_updater_version_prefix_removal() {
+        // 测试移除 "v" 前缀的逻辑
+        let tag_with_prefix = "v1.0.0";
+        let version = tag_with_prefix.trim_start_matches('v');
+        assert_eq!(version, "1.0.0");
+        
+        let tag_without_prefix = "1.0.0";
+        let version2 = tag_without_prefix.trim_start_matches('v');
+        assert_eq!(version2, "1.0.0");
+        
+        // 测试版本比较（模拟实际场景）
+        let current_version = "1.0.0";
+        let github_tag = "v1.0.0";
+        let normalized_tag = github_tag.trim_start_matches('v');
+        assert_eq!(current_version, normalized_tag);
     }
 
     #[test]

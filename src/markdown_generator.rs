@@ -143,10 +143,19 @@ impl MarkdownGenerator {
                 let local_path = self.generate_local_media_path(&tweet, i, media_url);
                 
                 if media_url.contains(".mp4") || media_url.contains(".mov") || media_url.contains(".webm") {
+                    // 根据文件扩展名确定正确的 MIME 类型
+                    let mime_type = if media_url.contains(".webm") {
+                        "video/webm"
+                    } else if media_url.contains(".mov") {
+                        "video/quicktime"
+                    } else {
+                        "video/mp4" // 默认或 .mp4
+                    };
+                    
                     // 使用HTML video标签嵌入视频
                     content.push_str(&format!("🎥 **视频 {}**:\n", i + 1));
                     content.push_str(&format!("<video controls width=\"100%\" style=\"max-width: 600px;\">\n"));
-                    content.push_str(&format!("  <source src=\"{}\" type=\"video/mp4\">\n", local_path));
+                    content.push_str(&format!("  <source src=\"{}\" type=\"{}\">\n", local_path, mime_type));
                     content.push_str(&format!("  您的浏览器不支持视频播放。\n"));
                     content.push_str(&format!("</video>\n"));
                     content.push_str(&format!("<br/>\n"));
@@ -1208,6 +1217,85 @@ mod tests {
         let formatted = generator.format_single_tweet(&tweet, 1).unwrap();
         assert!(formatted.contains("video"));
         assert!(formatted.contains("<video"));
+        assert!(formatted.contains("type=\"video/mp4\""));
+    }
+
+    #[test]
+    fn test_format_single_tweet_video_webm() {
+        let config = create_test_config();
+        let generator = MarkdownGenerator::new(config);
+        
+        let tweet = TweetContent {
+            id: "123".to_string(),
+            text: "WebM video tweet".to_string(),
+            created_at: Some(Utc::now()),
+            username: Some("test_user".to_string()),
+            display_name: None,
+            media_urls: vec!["https://example.com/video.webm".to_string()],
+            is_retweet: false,
+            retweeted_by: None,
+            reply_to: None,
+            quote_tweet: None,
+        };
+        
+        let formatted = generator.format_single_tweet(&tweet, 1).unwrap();
+        assert!(formatted.contains("video"));
+        assert!(formatted.contains("<video"));
+        assert!(formatted.contains("type=\"video/webm\""));
+        assert!(!formatted.contains("type=\"video/mp4\""));
+    }
+
+    #[test]
+    fn test_format_single_tweet_video_mov() {
+        let config = create_test_config();
+        let generator = MarkdownGenerator::new(config);
+        
+        let tweet = TweetContent {
+            id: "123".to_string(),
+            text: "MOV video tweet".to_string(),
+            created_at: Some(Utc::now()),
+            username: Some("test_user".to_string()),
+            display_name: None,
+            media_urls: vec!["https://example.com/video.mov".to_string()],
+            is_retweet: false,
+            retweeted_by: None,
+            reply_to: None,
+            quote_tweet: None,
+        };
+        
+        let formatted = generator.format_single_tweet(&tweet, 1).unwrap();
+        assert!(formatted.contains("video"));
+        assert!(formatted.contains("<video"));
+        assert!(formatted.contains("type=\"video/quicktime\""));
+        assert!(!formatted.contains("type=\"video/mp4\""));
+    }
+
+    #[test]
+    fn test_format_single_tweet_multiple_video_formats() {
+        let config = create_test_config();
+        let generator = MarkdownGenerator::new(config);
+        
+        let tweet = TweetContent {
+            id: "123".to_string(),
+            text: "Multiple video formats".to_string(),
+            created_at: Some(Utc::now()),
+            username: Some("test_user".to_string()),
+            display_name: None,
+            media_urls: vec![
+                "https://example.com/video1.mp4".to_string(),
+                "https://example.com/video2.webm".to_string(),
+                "https://example.com/video3.mov".to_string(),
+            ],
+            is_retweet: false,
+            retweeted_by: None,
+            reply_to: None,
+            quote_tweet: None,
+        };
+        
+        let formatted = generator.format_single_tweet(&tweet, 1).unwrap();
+        assert!(formatted.contains("type=\"video/mp4\""));
+        assert!(formatted.contains("type=\"video/webm\""));
+        assert!(formatted.contains("type=\"video/quicktime\""));
     }
 
     #[test]

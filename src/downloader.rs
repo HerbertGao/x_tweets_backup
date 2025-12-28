@@ -133,6 +133,18 @@ impl Downloader {
             println!("[DEBUG] 处理媒体文件 {}/{}: {}", i + 1, total_media_count, media_url);
             
             let parsed_url = Url::parse(media_url)?;
+            
+            // 验证 URL 域名，防止 SSRF 攻击
+            if let Some(host) = parsed_url.host_str() {
+                if !host.ends_with("twimg.com") && !host.ends_with("twitter.com") {
+                    eprintln!("[WARNING] 跳过可疑的媒体 URL (非 Twitter 域名): {}", media_url);
+                    continue;
+                }
+            } else {
+                eprintln!("[WARNING] 跳过无效的媒体 URL (无域名): {}", media_url);
+                continue;
+            }
+            
             let original_name = parsed_url.path_segments()
                 .and_then(|segments| segments.last())
                 .unwrap_or("unknown");
@@ -154,7 +166,10 @@ impl Downloader {
                 } else {
                     println!("发现损坏的空文件，将重新下载 ({}/{}): {:?}", 
                         i + 1, total_media_count, out_path);
-                    fs::remove_file(&out_path)?;
+                    // 尝试删除空文件，失败时记录警告但继续
+                    if let Err(e) = fs::remove_file(&out_path) {
+                        eprintln!("[WARNING] 无法删除空文件 {:?}: {}，将继续尝试下载", out_path, e);
+                    }
                 }
             }
 
@@ -373,7 +388,10 @@ impl Downloader {
             if downloaded_size != expected_size {
                 println!("下载不完整 ({}/{}): {:?} (期望: {}, 实际: {})", 
                     current, total, out_path, expected_size, downloaded_size);
-                fs::remove_file(out_path)?;
+                // 尝试删除不完整的文件，失败时记录警告但不影响流程
+                if let Err(e) = fs::remove_file(out_path) {
+                    eprintln!("[WARNING] 无法删除不完整的文件 {:?}: {}", out_path, e);
+                }
                 return Ok(false);
             }
         }
