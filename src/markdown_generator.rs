@@ -488,7 +488,7 @@ mod tests {
             "created_at_ms": "1609459200000"
         });
         
-        let result = tweet_parser::extract_tweet_timestamp(&legacy).unwrap();
+        let result = tweet_parser::extract_tweet_timestamp_datetime(&legacy).unwrap();
         assert!(result.is_some());
     }
 
@@ -498,7 +498,7 @@ mod tests {
             "created_at_ms": 1609459200000i64
         });
         
-        let result = tweet_parser::extract_tweet_timestamp(&legacy).unwrap();
+        let result = tweet_parser::extract_tweet_timestamp_datetime(&legacy).unwrap();
         assert!(result.is_some());
     }
 
@@ -508,14 +508,14 @@ mod tests {
             "created_at": "Thu Apr 06 15:24:15 +0000 2017"
         });
         
-        let result = tweet_parser::extract_tweet_timestamp(&legacy).unwrap();
+        let result = tweet_parser::extract_tweet_timestamp_datetime(&legacy).unwrap();
         assert!(result.is_some());
     }
 
     #[test]
     fn test_extract_tweet_timestamp_none() {
         let legacy = json!({});
-        let result = tweet_parser::extract_tweet_timestamp(&legacy).unwrap();
+        let result = tweet_parser::extract_tweet_timestamp_datetime(&legacy).unwrap();
         assert!(result.is_none());
     }
 
