@@ -605,7 +605,7 @@ mod tests {
             "retweeted": true
         });
         
-        let (is_retweet, _) = tweet_parser::extract_retweet_info(&legacy).unwrap();
+        let (is_retweet, _) = MarkdownGenerator::extract_retweet_info(&legacy).unwrap();
         assert!(is_retweet);
     }
 
@@ -615,7 +615,7 @@ mod tests {
             "in_reply_to_screen_name": "reply_user"
         });
         
-        let result = tweet_parser::extract_reply_info(&legacy).unwrap();
+        let result = MarkdownGenerator::extract_reply_info(&legacy).unwrap();
         assert_eq!(result, Some("reply_user".to_string()));
     }
 
@@ -625,7 +625,7 @@ mod tests {
             "quoted_status_id": "12345"
         });
         
-        let result = tweet_parser::extract_quote_tweet_info(&legacy).unwrap();
+        let result = MarkdownGenerator::extract_quote_tweet_info(&legacy).unwrap();
         assert_eq!(result, Some("12345".to_string()));
     }
 
@@ -756,7 +756,7 @@ mod tests {
             }
         });
         
-        let result = tweet_parser::extract_tweet_content(&tweet_data).unwrap();
+        let result = MarkdownGenerator::extract_tweet_content(&tweet_data).unwrap();
         assert_eq!(result.id, "123456");
         assert_eq!(result.text, "Test tweet content");
         assert_eq!(result.username, Some("test_user".to_string()));
@@ -783,7 +783,7 @@ mod tests {
             }
         });
         
-        let result = tweet_parser::extract_tweet_content(&tweet_data).unwrap();
+        let result = MarkdownGenerator::extract_tweet_content(&tweet_data).unwrap();
         assert_eq!(result.id, "789");
         assert_eq!(result.text, "Wrapped tweet");
     }
@@ -1058,7 +1058,7 @@ mod tests {
             }
         });
         
-        let result = tweet_parser::extract_tweet_content(&tweet_data).unwrap();
+        let result = MarkdownGenerator::extract_tweet_content(&tweet_data).unwrap();
         assert_eq!(result.media_urls.len(), 1);
         assert_eq!(result.media_urls[0], "https://example.com/photo.jpg");
     }
@@ -1073,7 +1073,7 @@ mod tests {
             }
         });
         
-        let result = tweet_parser::extract_tweet_content(&tweet_data).unwrap();
+        let result = MarkdownGenerator::extract_tweet_content(&tweet_data).unwrap();
         assert_eq!(result.reply_to, Some("reply_target".to_string()));
     }
 
@@ -1087,7 +1087,7 @@ mod tests {
             }
         });
         
-        let result = tweet_parser::extract_tweet_content(&tweet_data).unwrap();
+        let result = MarkdownGenerator::extract_tweet_content(&tweet_data).unwrap();
         assert_eq!(result.quote_tweet, Some("quoted123".to_string()));
     }
 
@@ -1100,7 +1100,7 @@ mod tests {
             }
         });
         
-        let result = tweet_parser::extract_tweet_content(&tweet_data).unwrap();
+        let result = MarkdownGenerator::extract_tweet_content(&tweet_data).unwrap();
         assert_eq!(result.id, "minimal");
         assert_eq!(result.text, "Minimal tweet");
         assert_eq!(result.username, None);

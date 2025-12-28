@@ -324,9 +324,9 @@ curl 'https://x.com/i/api/graphql/test' \
         let result = parse_curl_command(curl_command);
         // 应该能处理带引号的token
         // 测试应该验证解析结果是否正确，而不是只检查是否有结果
-        if let Ok(tokens) = result {
-            // 验证带引号的token被正确处理
-            assert!(tokens.contains_key("BEARER_TOKEN") || tokens.contains_key("Authorization"));
+        if let Ok(parsed) = result {
+            // 验证带引号的token被正确处理（检查bearer_token字段不为空）
+            assert!(!parsed.bearer_token.is_empty() || parsed.bearer_token.contains("quoted_token"));
         }
     }
 

@@ -431,7 +431,8 @@ mod tests {
             }
         });
         
-        let result = tweet_parser::extract_tweet_object(&tweet).unwrap();
+        let result = tweet_parser::extract_tweet_object(&tweet);
+        assert!(result.is_some());
         assert_eq!(result.unwrap().get("rest_id").and_then(|v| v.as_str()), Some("456"));
     }
 
@@ -444,7 +445,8 @@ mod tests {
             "rest_id": "789"
         });
         
-        let result = tweet_parser::extract_tweet_object(&tweet).unwrap();
+        let result = tweet_parser::extract_tweet_object(&tweet);
+        assert!(result.is_some());
         assert_eq!(result.unwrap().get("rest_id").and_then(|v| v.as_str()), Some("789"));
     }
 
@@ -812,7 +814,9 @@ mod tests {
                 }
             }
         });
-        assert_eq!(tweet_parser::extract_tweet_object(&tweet1).unwrap().unwrap().get("rest_id").and_then(|v| v.as_str()), Some("path1"));
+        let result1 = tweet_parser::extract_tweet_object(&tweet1);
+        assert!(result1.is_some());
+        assert_eq!(result1.unwrap().get("rest_id").and_then(|v| v.as_str()), Some("path1"));
         
         // 测试路径2
         let tweet2 = json!({
@@ -820,13 +824,17 @@ mod tests {
                 "rest_id": "path2"
             }
         });
-        assert_eq!(tweet_parser::extract_tweet_object(&tweet2).unwrap().unwrap().get("rest_id").and_then(|v| v.as_str()), Some("path2"));
+        let result2 = tweet_parser::extract_tweet_object(&tweet2);
+        assert!(result2.is_some());
+        assert_eq!(result2.unwrap().get("rest_id").and_then(|v| v.as_str()), Some("path2"));
         
         // 测试路径3
         let tweet3 = json!({
             "rest_id": "path3"
         });
-        assert_eq!(tweet_parser::extract_tweet_object(&tweet3).unwrap().unwrap().get("rest_id").and_then(|v| v.as_str()), Some("path3"));
+        let result3 = tweet_parser::extract_tweet_object(&tweet3);
+        assert!(result3.is_some());
+        assert_eq!(result3.unwrap().get("rest_id").and_then(|v| v.as_str()), Some("path3"));
     }
 
     #[test]
