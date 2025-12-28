@@ -324,12 +324,35 @@ impl MarkdownGenerator {
 
 
     fn extract_retweet_info(legacy: &Value) -> Result<(bool, Option<String>)> {
-        let is_retweet = legacy.get("retweeted").and_then(|r| r.as_bool()).unwrap_or(false);
+        // 正确检测转推：检查 retweeted_status_result 或 retweeted_status_id_str 的存在
+        // retweeted 字段表示认证用户是否转推了这条推文，不是推文本身是否为转推
+        let is_retweet = legacy.get("retweeted_status_result").is_some()
+            || legacy.get("retweeted_status_id_str").is_some();
         
         let retweeted_by = if is_retweet {
-            // 这里需要从父级数据结构中获取转推者信息
-            // 实际实现可能需要更复杂的逻辑
-            None
+            // 尝试从 retweeted_status_result 中提取原推文作者信息
+            // 结构通常是：retweeted_status_result.result.legacy.user.screen_name
+            legacy
+                .get("retweeted_status_result")
+                .and_then(|r| r.get("result"))
+                .and_then(|r| r.get("legacy"))
+                .and_then(|l| l.get("user"))
+                .and_then(|u| u.get("screen_name"))
+                .and_then(|s| s.as_str())
+                .map(|s| s.to_string())
+                // 或者尝试从其他路径获取
+                .or_else(|| {
+                    legacy
+                        .get("retweeted_status_result")
+                        .and_then(|r| r.get("result"))
+                        .and_then(|r| r.get("core"))
+                        .and_then(|c| c.get("user_results"))
+                        .and_then(|ur| ur.get("result"))
+                        .and_then(|r| r.get("legacy"))
+                        .and_then(|l| l.get("screen_name"))
+                        .and_then(|s| s.as_str())
+                        .map(|s| s.to_string())
+                })
         } else {
             None
         };
@@ -346,11 +369,28 @@ impl MarkdownGenerator {
     }
 
     fn extract_quote_tweet_info(legacy: &Value) -> Result<Option<String>> {
-        if let Some(quoted_status_id) = legacy.get("quoted_status_id").and_then(|id| id.as_str()) {
-            Ok(Some(quoted_status_id.to_string()))
-        } else {
-            Ok(None)
+        // 优先尝试 quoted_status_id_str（字符串版本，Twitter API 提供的专用字段）
+        if let Some(quoted_status_id_str) = legacy.get("quoted_status_id_str").and_then(|id| id.as_str()) {
+            return Ok(Some(quoted_status_id_str.to_string()));
         }
+        
+        // 尝试 quoted_status_id 作为字符串
+        if let Some(quoted_status_id) = legacy.get("quoted_status_id").and_then(|id| id.as_str()) {
+            return Ok(Some(quoted_status_id.to_string()));
+        }
+        
+        // 尝试 quoted_status_id 作为数字（64位整数），然后转换为字符串
+        // 这与 created_at_ms 的处理方式保持一致，支持 API 返回数字格式
+        if let Some(quoted_status_id_num) = legacy.get("quoted_status_id").and_then(|id| id.as_i64()) {
+            return Ok(Some(quoted_status_id_num.to_string()));
+        }
+        
+        // 尝试 quoted_status_id 作为 u64（无符号整数）
+        if let Some(quoted_status_id_num) = legacy.get("quoted_status_id").and_then(|id| id.as_u64()) {
+            return Ok(Some(quoted_status_id_num.to_string()));
+        }
+        
+        Ok(None)
     }
 }
 
@@ -621,12 +661,80 @@ mod tests {
 
     #[test]
     fn test_extract_retweet_info() {
+        // 测试使用 retweeted_status_id_str 字段检测转推
         let legacy = json!({
-            "retweeted": true
+            "retweeted_status_id_str": "1234567890"
         });
         
         let (is_retweet, _) = MarkdownGenerator::extract_retweet_info(&legacy).unwrap();
         assert!(is_retweet);
+    }
+
+    #[test]
+    fn test_extract_retweet_info_with_result() {
+        // 测试使用 retweeted_status_result 字段检测转推
+        let legacy = json!({
+            "retweeted_status_result": {
+                "result": {
+                    "legacy": {
+                        "user": {
+                            "screen_name": "original_author"
+                        }
+                    }
+                }
+            }
+        });
+        
+        let (is_retweet, retweeted_by) = MarkdownGenerator::extract_retweet_info(&legacy).unwrap();
+        assert!(is_retweet);
+        assert_eq!(retweeted_by, Some("original_author".to_string()));
+    }
+
+    #[test]
+    fn test_extract_retweet_info_with_core_path() {
+        // 测试从 retweeted_status_result 的 core 路径提取原推文作者
+        let legacy = json!({
+            "retweeted_status_result": {
+                "result": {
+                    "core": {
+                        "user_results": {
+                            "result": {
+                                "legacy": {
+                                    "screen_name": "original_user"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        let (is_retweet, retweeted_by) = MarkdownGenerator::extract_retweet_info(&legacy).unwrap();
+        assert!(is_retweet);
+        assert_eq!(retweeted_by, Some("original_user".to_string()));
+    }
+
+    #[test]
+    fn test_extract_retweet_info_not_retweet() {
+        // 测试非转推的情况（只有 retweeted 字段，但没有 retweeted_status_result 或 retweeted_status_id_str）
+        let legacy = json!({
+            "retweeted": true  // 这表示认证用户转推了这条推文，但推文本身不是转推
+        });
+        
+        let (is_retweet, _) = MarkdownGenerator::extract_retweet_info(&legacy).unwrap();
+        assert!(!is_retweet); // 应该返回 false，因为这不是转推
+    }
+
+    #[test]
+    fn test_extract_retweet_info_no_fields() {
+        // 测试没有任何转推相关字段的情况
+        let legacy = json!({
+            "full_text": "Regular tweet"
+        });
+        
+        let (is_retweet, retweeted_by) = MarkdownGenerator::extract_retweet_info(&legacy).unwrap();
+        assert!(!is_retweet);
+        assert_eq!(retweeted_by, None);
     }
 
     #[test]
@@ -647,6 +755,48 @@ mod tests {
         
         let result = MarkdownGenerator::extract_quote_tweet_info(&legacy).unwrap();
         assert_eq!(result, Some("12345".to_string()));
+    }
+
+    #[test]
+    fn test_extract_quote_tweet_info_numeric() {
+        // 测试数字格式的 quoted_status_id（Twitter API 可能返回）
+        let legacy = json!({
+            "quoted_status_id": 1234567890123456789i64
+        });
+        
+        let result = MarkdownGenerator::extract_quote_tweet_info(&legacy).unwrap();
+        assert_eq!(result, Some("1234567890123456789".to_string()));
+    }
+
+    #[test]
+    fn test_extract_quote_tweet_info_str_field() {
+        // 测试 quoted_status_id_str 字段（Twitter API 的专用字符串字段）
+        let legacy = json!({
+            "quoted_status_id_str": "1234567890123456789"
+        });
+        
+        let result = MarkdownGenerator::extract_quote_tweet_info(&legacy).unwrap();
+        assert_eq!(result, Some("1234567890123456789".to_string()));
+    }
+
+    #[test]
+    fn test_extract_quote_tweet_info_priority() {
+        // 测试优先级：quoted_status_id_str 应该优先于 quoted_status_id
+        let legacy = json!({
+            "quoted_status_id": 12345i64,
+            "quoted_status_id_str": "67890"
+        });
+        
+        let result = MarkdownGenerator::extract_quote_tweet_info(&legacy).unwrap();
+        assert_eq!(result, Some("67890".to_string())); // 应该使用 quoted_status_id_str
+    }
+
+    #[test]
+    fn test_extract_quote_tweet_info_none() {
+        let legacy = json!({});
+        
+        let result = MarkdownGenerator::extract_quote_tweet_info(&legacy).unwrap();
+        assert_eq!(result, None);
     }
 
     #[test]
@@ -1144,6 +1294,21 @@ mod tests {
         
         let result = MarkdownGenerator::extract_tweet_content(&tweet_data).unwrap();
         assert_eq!(result.quote_tweet, Some("quoted123".to_string()));
+    }
+
+    #[test]
+    fn test_extract_tweet_content_with_quote_numeric() {
+        // 测试数字格式的引用推文 ID（Twitter API 可能返回）
+        let tweet_data = json!({
+            "rest_id": "123",
+            "legacy": {
+                "full_text": "Quote tweet",
+                "quoted_status_id": 1234567890123456789i64
+            }
+        });
+        
+        let result = MarkdownGenerator::extract_tweet_content(&tweet_data).unwrap();
+        assert_eq!(result.quote_tweet, Some("1234567890123456789".to_string()));
     }
 
     #[test]

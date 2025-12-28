@@ -48,7 +48,8 @@ pub fn extract_media_urls(tweet_obj: &Value) -> Result<Vec<String>> {
             let media_type = media.get("type").and_then(|t| t.as_str()).unwrap_or("");
             
             match media_type {
-                "video" => {
+                "video" | "animated_gif" => {
+                    // 视频和动画 GIF 使用相同的 video_info 结构
                     if let Some(video_info) = media.get("video_info") {
                         if let Some(variants) = video_info.get("variants").and_then(|v| v.as_array()) {
                             let best_variant = variants
@@ -361,6 +362,83 @@ mod tests {
         let result = extract_media_urls(&tweet_obj).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], "https://example.com/video_hd.mp4"); // 应该选择最高bitrate
+    }
+
+    #[test]
+    fn test_extract_media_urls_animated_gif() {
+        // 测试动画 GIF 提取（使用与视频相同的 video_info 结构）
+        let tweet_obj = json!({
+            "legacy": {
+                "extended_entities": {
+                    "media": [
+                        {
+                            "type": "animated_gif",
+                            "video_info": {
+                                "variants": [
+                                    {
+                                        "bitrate": 500,
+                                        "url": "https://example.com/gif_low.mp4"
+                                    },
+                                    {
+                                        "bitrate": 1500,
+                                        "url": "https://example.com/gif_hd.mp4"
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            }
+        });
+        
+        let result = extract_media_urls(&tweet_obj).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], "https://example.com/gif_hd.mp4"); // 应该选择最高bitrate
+    }
+
+    #[test]
+    fn test_extract_media_urls_mixed_with_gif() {
+        // 测试混合媒体类型，包括动画 GIF
+        let tweet_obj = json!({
+            "legacy": {
+                "extended_entities": {
+                    "media": [
+                        {
+                            "type": "photo",
+                            "media_url_https": "https://example.com/photo.jpg"
+                        },
+                        {
+                            "type": "animated_gif",
+                            "video_info": {
+                                "variants": [
+                                    {
+                                        "bitrate": 1000,
+                                        "url": "https://example.com/gif.mp4"
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "type": "video",
+                            "video_info": {
+                                "variants": [
+                                    {
+                                        "bitrate": 2000,
+                                        "url": "https://example.com/video.mp4"
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            }
+        });
+        
+        let result = extract_media_urls(&tweet_obj).unwrap();
+        assert_eq!(result.len(), 3);
+        assert!(result.contains(&"https://example.com/photo.jpg".to_string()));
+        assert!(result.contains(&"https://example.com/gif.mp4".to_string()));
+        assert!(result.contains(&"https://example.com/video.mp4".to_string()));
     }
 
     #[test]
