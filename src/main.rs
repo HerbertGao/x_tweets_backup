@@ -114,13 +114,7 @@ async fn run_backup(username: &Option<String>) -> Result<()> {
     
     // 获取用户推文
     debug_log!(config, "[DEBUG] 开始获取用户推文...");
-    let tweets = match api.get_user_tweets_internal().await {
-        Ok(tweets) => tweets,
-        Err(e) => {
-            debug_log!(config, "[DEBUG] 获取用户 tweets 失败：{}", e);
-            return Ok(());
-        }
-    };
+    let tweets = api.get_user_tweets_internal().await?;
 
     debug_log!(config, "[DEBUG] 从 API 获取到 {} 条用户 tweet 数据", tweets.len());
     debug_log!(config, "[DEBUG] 已记录的下载ID数量: {}", downloader.downloaded_count());

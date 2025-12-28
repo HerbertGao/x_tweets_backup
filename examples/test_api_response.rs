@@ -1,5 +1,5 @@
 use anyhow::Result;
-use serde_json::{json, Value};
+use serde_json::Value;
 use x_tweets_backup::{Config, Downloader, MarkdownGenerator};
 
 #[tokio::main]
@@ -17,28 +17,19 @@ async fn main() -> Result<()> {
     
     // 解析API响应数据
     // 注意: api_response.json 文件已从 git 中移除以保护隐私
-    // 如需测试，请将测试 JSON 文件放在项目根目录并取消下面的注释
-    // let api_response = include_str!("../../api_response.json");
-    // let json_data: Value = serde_json::from_str(api_response)?;
+    // 使用方法：
+    // 1. 将测试 JSON 文件放在项目根目录
+    // 2. 取消下面的注释并修改路径
+    // 3. 运行: cargo run --example test_api_response
     
-    // 临时使用空 JSON 对象，实际使用时需要提供真实的 API 响应
-    eprintln!("[WARNING] test_api_response 需要 api_response.json 文件才能运行");
-    eprintln!("[WARNING] 该文件已从 git 中移除以保护隐私，请手动创建测试文件");
-    eprintln!("[INFO] 使用空 JSON 对象作为占位符");
-    
-    let json_data = json!({
-        "data": {
-            "user": {
-                "result": {
-                    "timeline": {
-                        "timeline": {
-                            "instructions": []
-                        }
-                    }
-                }
-            }
-        }
-    });
+    let json_data = if let Ok(api_response) = std::fs::read_to_string("api_response.json") {
+        serde_json::from_str(&api_response)?
+    } else {
+        eprintln!("[ERROR] 未找到 api_response.json 文件");
+        eprintln!("[INFO] 请将测试 JSON 文件放在项目根目录");
+        eprintln!("[INFO] 该文件已从 git 中移除以保护隐私");
+        return Err(anyhow::anyhow!("缺少 api_response.json 文件"));
+    };
     
     println!("成功解析JSON数据");
     

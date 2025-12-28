@@ -2,7 +2,13 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use regex::Regex;
 use std::fs;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::Path;
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 #[derive(Parser, Clone)]
 #[command(name = "setup")]
@@ -171,8 +177,30 @@ fn save_private_tokens(
         user_id, bearer_token, auth_token, ct0, personalization_id, user_agent, x_client_uuid, x_client_transaction_id
     );
 
-    fs::write(filename, content)?;
+    // 使用 OpenOptions 设置文件权限，确保敏感文件只有所有者可读写
+    let mut file = {
+        let mut opts = OpenOptions::new();
+        opts.create(true).write(true).truncate(true);
+        #[cfg(unix)]
+        {
+            opts.mode(0o600); // Unix: rw------- (仅所有者可读写)
+        }
+        opts.open(filename)?
+    };
+    
+    // 在 Unix 系统上确保权限正确设置（双重保险）
+    #[cfg(unix)]
+    {
+        let mut perms = file.metadata()?.permissions();
+        perms.set_mode(0o600);
+        fs::set_permissions(filename, perms)?;
+    }
+    
+    file.write_all(content.as_bytes())?;
+    file.sync_all()?;
+    
     println!("生成 {} 成功！", filename);
+    println!("已设置文件权限为 600 (仅所有者可读写)");
     Ok(())
 }
 
