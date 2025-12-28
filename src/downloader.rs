@@ -15,6 +15,15 @@ use filetime::{FileTime, set_file_times};
 
 use crate::config::Config;
 
+// 调试日志辅助宏
+macro_rules! debug_log {
+    ($config:expr, $($arg:tt)*) => {
+        if $config.debug_logs {
+            println!($($arg)*);
+        }
+    };
+}
+
 pub struct Downloader {
     client: Client,
     config: Config,
@@ -23,13 +32,13 @@ pub struct Downloader {
 
 impl Downloader {
     pub fn new(config: Config) -> Result<Self> {
-        println!("[DEBUG] 初始化下载器...");
+        debug_log!(config, "[DEBUG] 初始化下载器...");
         let client_builder = reqwest::Client::builder()
             .timeout(Duration::from_secs(30));
 
         let client = client_builder.build()?;
         let downloaded_ids = Self::load_downloaded_ids(&config.download_record)?;
-        println!("[DEBUG] 已加载 {} 个已下载的推文ID", downloaded_ids.len());
+        debug_log!(config, "[DEBUG] 已加载 {} 个已下载的推文ID", downloaded_ids.len());
 
         Ok(Downloader {
             client,
@@ -40,15 +49,18 @@ impl Downloader {
 
     fn load_downloaded_ids(filename: &str) -> Result<HashSet<String>> {
         if !Path::new(filename).exists() {
-            println!("[DEBUG] 下载记录文件不存在: {}", filename);
+            // 文件不存在是正常情况，不需要调试日志
             return Ok(HashSet::new());
         }
 
         let content = fs::read_to_string(filename)
             .with_context(|| format!("无法读取文件: {}", filename))?;
 
-        let ids: HashSet<String> = content.lines().map(|s| s.trim().to_string()).collect();
-        println!("[DEBUG] 从文件 {} 加载了 {} 个已下载ID", filename, ids.len());
+        let ids: HashSet<String> = content.lines()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        // 加载文件是正常操作，不需要调试日志
         Ok(ids)
     }
 
@@ -77,23 +89,23 @@ impl Downloader {
     }
 
     pub async fn call_media_downloader(&self, tweet: &Value, tweet_id: &str) -> Result<Option<bool>> {
-        println!("[DEBUG] 开始处理推文: {}", tweet_id);
+        debug_log!(self.config, "[DEBUG] 开始处理推文: {}", tweet_id);
         
         // 从 tweet 对象中抽取推文主体
         let tweet_obj = self.extract_tweet_object(tweet)?;
         if tweet_obj.is_none() {
-            println!("[DEBUG] 推文 {} 没有有效内容", tweet_id);
+            debug_log!(self.config, "[DEBUG] 推文 {} 没有有效内容", tweet_id);
             return Ok(None);
         }
         let tweet_obj = tweet_obj.unwrap();
 
         // 提取推文发布时间
         let tweet_timestamp = self.extract_tweet_timestamp(&tweet_obj)?;
-        println!("[DEBUG] 推文 {} 发布时间: {:?}", tweet_id, tweet_timestamp);
+        debug_log!(self.config, "[DEBUG] 推文 {} 发布时间: {:?}", tweet_id, tweet_timestamp);
 
         // 提取作者用户名（作为后备）
         let tweet_author_username = self.extract_username(&tweet_obj)?;
-        println!("[DEBUG] 推文 {} 作者: {:?}", tweet_id, tweet_author_username);
+        debug_log!(self.config, "[DEBUG] 推文 {} 作者: {:?}", tweet_id, tweet_author_username);
 
         // 优先使用配置中的目标用户名，如果没有则使用推文作者的用户名
         let username = if !self.config.target_username.is_empty() {
@@ -101,16 +113,16 @@ impl Downloader {
         } else {
             tweet_author_username
         };
-        println!("[DEBUG] 推文 {} 将使用用户名: {:?}", tweet_id, username);
+        debug_log!(self.config, "[DEBUG] 推文 {} 将使用用户名: {:?}", tweet_id, username);
 
         // 提取媒体列表
         let media_urls = self.extract_media_urls(&tweet_obj)?;
         if media_urls.is_empty() {
-            println!("[DEBUG] 推文 {} 没有媒体文件", tweet_id);
+            debug_log!(self.config, "[DEBUG] 推文 {} 没有媒体文件", tweet_id);
             return Ok(None);
         }
         
-        println!("[DEBUG] 推文 {} 找到 {} 个媒体文件", tweet_id, media_urls.len());
+        debug_log!(self.config, "[DEBUG] 推文 {} 找到 {} 个媒体文件", tweet_id, media_urls.len());
 
         // 构建文件名前缀：格式为 [username][tweetid]
         let username_str = username.as_deref().unwrap_or("");
@@ -130,7 +142,7 @@ impl Downloader {
         let mut skipped_count = 0;
 
         for (i, media_url) in media_urls.iter().enumerate() {
-            println!("[DEBUG] 处理媒体文件 {}/{}: {}", i + 1, total_media_count, media_url);
+            debug_log!(self.config, "[DEBUG] 处理媒体文件 {}/{}: {}", i + 1, total_media_count, media_url);
             
             let parsed_url = Url::parse(media_url)?;
             
@@ -152,19 +164,19 @@ impl Downloader {
             // 文件名格式：[username][tweetid][origin_filename]
             let filename = format!("{}[{}]", prefix, original_name);
             let out_path = output_dir.join(&filename);
-            println!("[DEBUG] 输出路径: {:?}", out_path);
+            debug_log!(self.config, "[DEBUG] 输出路径: {:?}", out_path);
 
             // 检查文件是否已存在
             if out_path.exists() {
                 let metadata = fs::metadata(&out_path)?;
                 if metadata.len() > 0 {
-                    println!("跳过已存在的文件 ({}/{}): {:?} (大小: {} 字节)", 
+                    debug_log!(self.config, "跳过已存在的文件 ({}/{}): {:?} (大小: {} 字节)", 
                         i + 1, total_media_count, out_path, metadata.len());
                     skipped_count += 1;
                     download_success_count += 1;
                     continue;
                 } else {
-                    println!("发现损坏的空文件，将重新下载 ({}/{}): {:?}", 
+                    debug_log!(self.config, "发现损坏的空文件，将重新下载 ({}/{}): {:?}", 
                         i + 1, total_media_count, out_path);
                     // 尝试删除空文件，失败时记录警告但继续
                     if let Err(e) = fs::remove_file(&out_path) {
@@ -173,41 +185,41 @@ impl Downloader {
                 }
             }
 
-            println!("[DEBUG] 开始下载媒体文件: {}", media_url);
+            debug_log!(self.config, "[DEBUG] 开始下载媒体文件: {}", media_url);
             match self.download_media(media_url, &out_path, i + 1, total_media_count).await {
                 Ok(true) => {
-                    println!("[DEBUG] 下载成功: {:?}", out_path);
+                    debug_log!(self.config, "[DEBUG] 下载成功: {:?}", out_path);
                     // 下载成功后设置文件时间为推文发布时间
                     if let Some(ts) = tweet_timestamp {
                         let ft = FileTime::from_unix_time(ts, 0);
                         if let Err(e) = set_file_times(&out_path, ft, ft) {
-                            println!("[DEBUG] 设置文件时间失败 {:?}: {}", out_path, e);
+                            debug_log!(self.config, "[DEBUG] 设置文件时间失败 {:?}: {}", out_path, e);
                         } else {
-                            println!("[DEBUG] 已设置文件时间: {:?}", out_path);
+                            debug_log!(self.config, "[DEBUG] 已设置文件时间: {:?}", out_path);
                         }
                     }
                     download_success_count += 1;
                 }
                 Ok(false) => {
-                    println!("[DEBUG] 下载失败: {}", media_url);
+                    debug_log!(self.config, "[DEBUG] 下载失败: {}", media_url);
                 }
                 Err(e) => {
-                    println!("[DEBUG] 下载异常 ({}/{}): {} 错误: {}", i + 1, total_media_count, media_url, e);
+                    debug_log!(self.config, "[DEBUG] 下载异常 ({}/{}): {} 错误: {}", i + 1, total_media_count, media_url, e);
                 }
             }
         }
 
         if download_success_count > 0 {
             if skipped_count > 0 {
-                println!("Tweet {} 处理完成: 跳过 {} 个已存在文件，成功下载 {} 个新文件", 
+                debug_log!(self.config, "Tweet {} 处理完成: 跳过 {} 个已存在文件，成功下载 {} 个新文件", 
                     tweet_id, skipped_count, download_success_count - skipped_count);
             } else {
-                println!("Tweet {} 成功下载了 {}/{} 个媒体文件", 
+                debug_log!(self.config, "Tweet {} 成功下载了 {}/{} 个媒体文件", 
                     tweet_id, download_success_count, total_media_count);
             }
             Ok(Some(true))
         } else {
-            println!("Tweet {} 所有媒体文件下载失败", tweet_id);
+            debug_log!(self.config, "Tweet {} 所有媒体文件下载失败", tweet_id);
             Ok(Some(false))
         }
     }
@@ -343,7 +355,7 @@ impl Downloader {
     }
 
     async fn download_media(&self, url: &str, out_path: &Path, current: usize, total: usize) -> Result<bool> {
-        println!("[DEBUG] 发送下载请求: {}", url);
+        debug_log!(self.config, "[DEBUG] 发送下载请求: {}", url);
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert("User-Agent", self.config.user_agent.parse()?);
 
@@ -353,15 +365,15 @@ impl Downloader {
             .send()
             .await?;
 
-        println!("[DEBUG] 下载响应状态: {}", response.status());
+        debug_log!(self.config, "[DEBUG] 下载响应状态: {}", response.status());
         if !response.status().is_success() {
-            println!("[DEBUG] 下载失败 ({}) ({}/{}): {}", response.status(), current, total, url);
+            debug_log!(self.config, "[DEBUG] 下载失败 ({}) ({}/{}): {}", response.status(), current, total, url);
             return Ok(false);
         }
 
         let content_length = response.content_length();
         let mut downloaded_size = 0u64;
-        println!("[DEBUG] 文件大小: {:?} 字节", content_length);
+        debug_log!(self.config, "[DEBUG] 文件大小: {:?} 字节", content_length);
 
         // 创建进度条
         let pb = ProgressBar::new(content_length.unwrap_or(0));
@@ -370,7 +382,7 @@ impl Downloader {
             .unwrap()
             .progress_chars("#>-"));
 
-        println!("[DEBUG] 开始写入文件: {:?}", out_path);
+        debug_log!(self.config, "[DEBUG] 开始写入文件: {:?}", out_path);
         let mut file = File::create(out_path).await?;
         let mut stream = response.bytes_stream();
 
@@ -386,7 +398,7 @@ impl Downloader {
         // 验证下载完整性
         if let Some(expected_size) = content_length {
             if downloaded_size != expected_size {
-                println!("下载不完整 ({}/{}): {:?} (期望: {}, 实际: {})", 
+                eprintln!("[ERROR] 下载不完整 ({}/{}): {:?} (期望: {}, 实际: {})", 
                     current, total, out_path, expected_size, downloaded_size);
                 // 尝试删除不完整的文件，失败时记录警告但不影响流程
                 if let Err(e) = fs::remove_file(out_path) {
@@ -396,7 +408,7 @@ impl Downloader {
             }
         }
 
-        println!("下载成功 ({}/{}): {:?} (大小: {} 字节)", 
+        debug_log!(self.config, "下载成功 ({}/{}): {:?} (大小: {} 字节)", 
             current, total, out_path, downloaded_size);
         Ok(true)
     }

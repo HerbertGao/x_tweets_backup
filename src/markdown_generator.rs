@@ -6,6 +6,15 @@ use std::path::Path;
 
 use crate::config::Config;
 
+// 调试日志辅助宏
+macro_rules! debug_log {
+    ($config:expr, $($arg:tt)*) => {
+        if $config.debug_logs {
+            println!($($arg)*);
+        }
+    };
+}
+
 #[derive(Debug, Clone)]
 pub struct TweetContent {
     pub id: String,
@@ -27,7 +36,7 @@ pub struct MarkdownGenerator {
 
 impl MarkdownGenerator {
     pub fn new(config: Config) -> Self {
-        println!("[DEBUG] 初始化Markdown生成器");
+        debug_log!(config, "[DEBUG] 初始化Markdown生成器");
         MarkdownGenerator {
             config,
             tweets: Vec::new(),
@@ -35,7 +44,7 @@ impl MarkdownGenerator {
     }
 
     pub fn add_tweet(&mut self, tweet: TweetContent) {
-        println!("[DEBUG] 添加推文到Markdown: {} - {}", tweet.id, tweet.text.chars().take(50).collect::<String>());
+        debug_log!(self.config, "[DEBUG] 添加推文到Markdown: {} - {}", tweet.id, tweet.text.chars().take(50).collect::<String>());
         self.tweets.push(tweet);
     }
 
@@ -78,7 +87,7 @@ impl MarkdownGenerator {
     }
 
     pub fn save_markdown(&self) -> Result<()> {
-        println!("[DEBUG] 开始生成Markdown文件，包含 {} 条推文", self.tweets.len());
+        debug_log!(self.config, "[DEBUG] 开始生成Markdown文件，包含 {} 条推文", self.tweets.len());
         let markdown_content = self.generate_markdown()?;
         
         // 确保目录存在
@@ -88,7 +97,7 @@ impl MarkdownGenerator {
 
         let content_len = markdown_content.len();
         fs::write(&self.config.markdown_output, markdown_content)?;
-        println!("[DEBUG] Markdown文件已保存到: {} (大小: {} 字节)", 
+        debug_log!(self.config, "[DEBUG] Markdown文件已保存到: {} (大小: {} 字节)", 
             self.config.markdown_output, 
             content_len);
         
@@ -360,7 +369,7 @@ impl MarkdownGenerator {
                 .map(|s| s.to_string());
         }
 
-        println!("[DEBUG] 提取用户信息 - 用户名: {:?}, 显示名: {:?}", username, display_name);
+        // 注意：此函数是静态方法，无法访问 config，调试日志已在调用处处理
         Ok((username, display_name))
     }
 
