@@ -863,42 +863,46 @@ mod tests {
 
     #[test]
     fn test_extract_media_urls_video_no_bitrate() {
-        let legacy = json!({
-            "extended_entities": {
-                "media": [
-                    {
-                        "type": "video",
-                        "video_info": {
-                            "variants": [
-                                {
-                                    "url": "https://example.com/video.mp4"
-                                }
-                            ]
+        let tweet_obj = json!({
+            "legacy": {
+                "extended_entities": {
+                    "media": [
+                        {
+                            "type": "video",
+                            "video_info": {
+                                "variants": [
+                                    {
+                                        "url": "https://example.com/video.mp4"
+                                    }
+                                ]
+                            }
                         }
-                    }
-                ]
+                    ]
+                }
             }
         });
         
-        let result = tweet_parser::extract_media_urls(&legacy).unwrap();
+        let result = tweet_parser::extract_media_urls(&tweet_obj).unwrap();
         // 没有bitrate的variant不会被选择
         assert_eq!(result.len(), 0);
     }
 
     #[test]
     fn test_extract_media_urls_unknown_type() {
-        let legacy = json!({
-            "extended_entities": {
-                "media": [
-                    {
-                        "type": "unknown",
-                        "media_url_https": "https://example.com/unknown.jpg"
-                    }
-                ]
+        let tweet_obj = json!({
+            "legacy": {
+                "extended_entities": {
+                    "media": [
+                        {
+                            "type": "unknown",
+                            "media_url_https": "https://example.com/unknown.jpg"
+                        }
+                    ]
+                }
             }
         });
         
-        let result = tweet_parser::extract_media_urls(&legacy).unwrap();
+        let result = tweet_parser::extract_media_urls(&tweet_obj).unwrap();
         assert_eq!(result.len(), 0);
     }
 
