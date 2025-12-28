@@ -150,8 +150,8 @@ impl XApi {
             let fieldtoggles_encoded = urlencoding::encode(r#"{"withArticlePlainText":false}"#);
 
             let url = format!(
-                "https://x.com/i/api/graphql/{}/self.config.user_tweets_query_id,
-                variables_encoded, features_encoded, fieldtoggles_encoded/UserTweets?variables={}&features={}&fieldToggles={}",
+                "https://x.com/i/api/graphql/{}/UserTweets?variables={}&features={}&fieldToggles={}",
+                self.config.user_tweets_query_id,
                 variables_encoded, features_encoded, fieldtoggles_encoded
             );
 
