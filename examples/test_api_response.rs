@@ -131,6 +131,10 @@ fn create_test_config() -> Config {
         save_markdown: true,
         markdown_output: "data/test_tweets_backup.md".to_string(),
         debug_logs: true,
+        user_by_screen_name_query_id: "6ND0OKRCgPajU_yJbcWSVw".to_string(),
+        user_tweets_query_id: "V3vRrAJh5U6n9m1ZJ8xYQw".to_string(),
+        max_pages: 50,
+        download_timeout_secs: 30,
     }
 }
 
