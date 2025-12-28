@@ -497,31 +497,37 @@ mod tests {
 
     #[test]
     fn test_extract_tweet_timestamp_from_ms_string() {
-        let legacy = json!({
-            "created_at_ms": "1609459200000"
+        let tweet_obj = json!({
+            "legacy": {
+                "created_at_ms": "1609459200000"
+            }
         });
         
-        let result = tweet_parser::extract_tweet_timestamp_datetime(&legacy).unwrap();
+        let result = tweet_parser::extract_tweet_timestamp_datetime(&tweet_obj).unwrap();
         assert!(result.is_some());
     }
 
     #[test]
     fn test_extract_tweet_timestamp_from_ms_number() {
-        let legacy = json!({
-            "created_at_ms": 1609459200000i64
+        let tweet_obj = json!({
+            "legacy": {
+                "created_at_ms": 1609459200000i64
+            }
         });
         
-        let result = tweet_parser::extract_tweet_timestamp_datetime(&legacy).unwrap();
+        let result = tweet_parser::extract_tweet_timestamp_datetime(&tweet_obj).unwrap();
         assert!(result.is_some());
     }
 
     #[test]
     fn test_extract_tweet_timestamp_from_string() {
-        let legacy = json!({
-            "created_at": "Thu Apr 06 15:24:15 +0000 2017"
+        let tweet_obj = json!({
+            "legacy": {
+                "created_at": "Thu Apr 06 15:24:15 +0000 2017"
+            }
         });
         
-        let result = tweet_parser::extract_tweet_timestamp_datetime(&legacy).unwrap();
+        let result = tweet_parser::extract_tweet_timestamp_datetime(&tweet_obj).unwrap();
         assert!(result.is_some());
     }
 
@@ -554,47 +560,51 @@ mod tests {
 
     #[test]
     fn test_extract_media_urls_photo() {
-        let legacy = json!({
-            "extended_entities": {
-                "media": [
-                    {
-                        "type": "photo",
-                        "media_url_https": "https://example.com/image.jpg"
-                    }
-                ]
+        let tweet_obj = json!({
+            "legacy": {
+                "extended_entities": {
+                    "media": [
+                        {
+                            "type": "photo",
+                            "media_url_https": "https://example.com/image.jpg"
+                        }
+                    ]
+                }
             }
         });
         
-        let result = tweet_parser::extract_media_urls(&legacy).unwrap();
+        let result = tweet_parser::extract_media_urls(&tweet_obj).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], "https://example.com/image.jpg");
     }
 
     #[test]
     fn test_extract_media_urls_video() {
-        let legacy = json!({
-            "extended_entities": {
-                "media": [
-                    {
-                        "type": "video",
-                        "video_info": {
-                            "variants": [
-                                {
-                                    "bitrate": 1000,
-                                    "url": "https://example.com/video.mp4"
-                                },
-                                {
-                                    "bitrate": 2000,
-                                    "url": "https://example.com/video_hd.mp4"
-                                }
-                            ]
+        let tweet_obj = json!({
+            "legacy": {
+                "extended_entities": {
+                    "media": [
+                        {
+                            "type": "video",
+                            "video_info": {
+                                "variants": [
+                                    {
+                                        "bitrate": 1000,
+                                        "url": "https://example.com/video.mp4"
+                                    },
+                                    {
+                                        "bitrate": 2000,
+                                        "url": "https://example.com/video_hd.mp4"
+                                    }
+                                ]
+                            }
                         }
-                    }
-                ]
+                    ]
+                }
             }
         });
         
-        let result = tweet_parser::extract_media_urls(&legacy).unwrap();
+        let result = tweet_parser::extract_media_urls(&tweet_obj).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], "https://example.com/video_hd.mp4"); // 应该选择最高bitrate
     }
@@ -833,18 +843,20 @@ mod tests {
 
     #[test]
     fn test_extract_media_urls_from_entities() {
-        let legacy = json!({
-            "entities": {
-                "media": [
-                    {
-                        "type": "photo",
-                        "media_url_https": "https://example.com/entity_photo.jpg"
-                    }
-                ]
+        let tweet_obj = json!({
+            "legacy": {
+                "entities": {
+                    "media": [
+                        {
+                            "type": "photo",
+                            "media_url_https": "https://example.com/entity_photo.jpg"
+                        }
+                    ]
+                }
             }
         });
         
-        let result = tweet_parser::extract_media_urls(&legacy).unwrap();
+        let result = tweet_parser::extract_media_urls(&tweet_obj).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], "https://example.com/entity_photo.jpg");
     }
