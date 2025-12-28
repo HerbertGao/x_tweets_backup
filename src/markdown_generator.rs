@@ -152,6 +152,15 @@ impl MarkdownGenerator {
                 // 尝试生成本地文件路径
                 let local_path = self.generate_local_media_path(&tweet, i, media_url);
                 
+                // HTML转义辅助函数
+                let escape_html = |s: &str| -> String {
+                    s.replace("&", "&amp;")
+                        .replace("<", "&lt;")
+                        .replace(">", "&gt;")
+                        .replace("\"", "&quot;")
+                        .replace("'", "&#x27;")
+                };
+                
                 if media_url.contains(".mp4") || media_url.contains(".mov") || media_url.contains(".webm") {
                     // 根据文件扩展名确定正确的 MIME 类型
                     let mime_type = if media_url.contains(".webm") {
@@ -160,15 +169,6 @@ impl MarkdownGenerator {
                         "video/quicktime"
                     } else {
                         "video/mp4" // 默认或 .mp4
-                    };
-                    
-                    // HTML转义辅助函数
-                    let escape_html = |s: &str| -> String {
-                        s.replace("&", "&amp;")
-                            .replace("<", "&lt;")
-                            .replace(">", "&gt;")
-                            .replace("\"", "&quot;")
-                            .replace("'", "&#x27;")
                     };
                     
                     // 使用HTML video标签嵌入视频（转义用户提供的内容）
