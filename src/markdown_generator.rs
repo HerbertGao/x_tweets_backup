@@ -213,7 +213,17 @@ impl MarkdownGenerator {
         };
         
         // 生成本地文件名，使用与下载器相同的格式：[username][tweetid][origin_filename]
+        // 重要：使用实际推文作者的用户名（tweet.username），与下载器保持一致
+        // 下载器也会从推文对象中提取实际作者用户名，确保两者使用相同的逻辑
         let username_str = tweet.username.as_deref().unwrap_or("");
+        
+        // 如果推文中没有用户名，尝试使用配置中的目标用户名作为后备
+        let username_str = if username_str.is_empty() && !self.config.target_username.is_empty() {
+            &self.config.target_username
+        } else {
+            username_str
+        };
+        
         let local_filename = if username_str.is_empty() {
             // 如果用户名为空，只使用推文ID
             format!("[{}][{}]", tweet.id, clean_filename)
@@ -648,7 +658,7 @@ mod tests {
             id: "123456".to_string(),
             text: "Test".to_string(),
             created_at: None,
-            username: Some("test_user".to_string()),
+            username: Some("test_user".to_string()), // 推文实际作者用户名
             display_name: None,
             media_urls: vec![],
             is_retweet: false,
@@ -658,6 +668,7 @@ mod tests {
         };
         
         let path = generator.generate_local_media_path(&tweet, 0, "https://example.com/image.jpg?param=value");
+        // 应该使用 tweet.username（实际作者用户名），与下载器保持一致
         assert!(path.contains("test_user"));
         assert!(path.contains("123456"));
         assert!(path.contains("image.jpg"));
@@ -666,14 +677,15 @@ mod tests {
 
     #[test]
     fn test_generate_local_media_path_no_username() {
-        let config = create_test_config();
+        let mut config = create_test_config();
+        config.target_username = "fallback_user".to_string(); // 设置后备用户名
         let generator = MarkdownGenerator::new(config);
         
         let tweet = TweetContent {
             id: "123456".to_string(),
             text: "Test".to_string(),
             created_at: None,
-            username: None,
+            username: None, // 推文没有用户名，应该使用 config.target_username 作为后备
             display_name: None,
             media_urls: vec![],
             is_retweet: false,
@@ -683,6 +695,33 @@ mod tests {
         };
         
         let path = generator.generate_local_media_path(&tweet, 0, "https://example.com/image.jpg");
+        // 当推文没有用户名时，使用 config.target_username 作为后备
+        assert!(path.contains("fallback_user"));
+        assert!(path.contains("123456"));
+        assert!(path.contains("image.jpg"));
+    }
+    
+    #[test]
+    fn test_generate_local_media_path_no_username_no_fallback() {
+        let mut config = create_test_config();
+        config.target_username = "".to_string(); // 没有设置后备用户名
+        let generator = MarkdownGenerator::new(config);
+        
+        let tweet = TweetContent {
+            id: "123456".to_string(),
+            text: "Test".to_string(),
+            created_at: None,
+            username: None, // 推文没有用户名，也没有后备用户名
+            display_name: None,
+            media_urls: vec![],
+            is_retweet: false,
+            retweeted_by: None,
+            reply_to: None,
+            quote_tweet: None,
+        };
+        
+        let path = generator.generate_local_media_path(&tweet, 0, "https://example.com/image.jpg");
+        // 当没有任何用户名时，只使用推文ID
         assert!(path.contains("123456"));
         assert!(path.contains("image.jpg"));
         assert!(!path.contains("test_user"));

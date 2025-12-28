@@ -126,27 +126,35 @@ pub fn extract_tweet_timestamp_datetime(tweet_obj: &Value) -> Result<Option<Date
 }
 
 /// 从推文对象中提取用户信息（用户名和显示名）
+/// 尝试多个可能的 JSON 路径，确保能从不同结构的 API 响应中提取用户名
 pub fn extract_user_info(tweet_obj: &Value) -> Result<(Option<String>, Option<String>)> {
-    // 尝试从core.user_results.result.legacy路径提取（主要路径）
-    let mut username = tweet_obj
-        .get("core")
-        .and_then(|c| c.get("user_results"))
-        .and_then(|ur| ur.get("result"))
-        .and_then(|r| r.get("legacy"))
-        .and_then(|l| l.get("screen_name"))
-        .and_then(|s| s.as_str())
-        .map(|s| s.to_string());
+    let mut username: Option<String> = None;
+    let mut display_name: Option<String> = None;
 
-    let mut display_name = tweet_obj
-        .get("core")
-        .and_then(|c| c.get("user_results"))
-        .and_then(|ur| ur.get("result"))
-        .and_then(|r| r.get("legacy"))
-        .and_then(|l| l.get("name"))
-        .and_then(|n| n.as_str())
-        .map(|s| s.to_string());
+    // 路径1: core.user_results.result.legacy（主要路径）
+    if username.is_none() {
+        username = tweet_obj
+            .get("core")
+            .and_then(|c| c.get("user_results"))
+            .and_then(|ur| ur.get("result"))
+            .and_then(|r| r.get("legacy"))
+            .and_then(|l| l.get("screen_name"))
+            .and_then(|s| s.as_str())
+            .map(|s| s.to_string());
+    }
 
-    // 如果旧路径没有找到，尝试直接从core路径提取
+    if display_name.is_none() {
+        display_name = tweet_obj
+            .get("core")
+            .and_then(|c| c.get("user_results"))
+            .and_then(|ur| ur.get("result"))
+            .and_then(|r| r.get("legacy"))
+            .and_then(|l| l.get("name"))
+            .and_then(|n| n.as_str())
+            .map(|s| s.to_string());
+    }
+
+    // 路径2: core.screen_name（直接路径）
     if username.is_none() {
         username = tweet_obj
             .get("core")
@@ -163,7 +171,7 @@ pub fn extract_user_info(tweet_obj: &Value) -> Result<(Option<String>, Option<St
             .map(|s| s.to_string());
     }
 
-    // 如果还是没有找到，尝试从user_results.result.core路径提取
+    // 路径3: core.user_results.result.core（替代路径）
     if username.is_none() {
         username = tweet_obj
             .get("core")
@@ -179,6 +187,65 @@ pub fn extract_user_info(tweet_obj: &Value) -> Result<(Option<String>, Option<St
         display_name = tweet_obj
             .get("core")
             .and_then(|c| c.get("user_results"))
+            .and_then(|ur| ur.get("result"))
+            .and_then(|r| r.get("core"))
+            .and_then(|c| c.get("name"))
+            .and_then(|n| n.as_str())
+            .map(|s| s.to_string());
+    }
+
+    // 路径4: legacy.screen_name（从 legacy 直接提取，用于某些嵌套结构）
+    if username.is_none() {
+        username = tweet_obj
+            .get("legacy")
+            .and_then(|l| l.get("screen_name"))
+            .and_then(|s| s.as_str())
+            .map(|s| s.to_string());
+    }
+
+    if display_name.is_none() {
+        display_name = tweet_obj
+            .get("legacy")
+            .and_then(|l| l.get("name"))
+            .and_then(|n| n.as_str())
+            .map(|s| s.to_string());
+    }
+
+    // 路径5: user_results.result.legacy（无 core 前缀的情况）
+    if username.is_none() {
+        username = tweet_obj
+            .get("user_results")
+            .and_then(|ur| ur.get("result"))
+            .and_then(|r| r.get("legacy"))
+            .and_then(|l| l.get("screen_name"))
+            .and_then(|s| s.as_str())
+            .map(|s| s.to_string());
+    }
+
+    if display_name.is_none() {
+        display_name = tweet_obj
+            .get("user_results")
+            .and_then(|ur| ur.get("result"))
+            .and_then(|r| r.get("legacy"))
+            .and_then(|l| l.get("name"))
+            .and_then(|n| n.as_str())
+            .map(|s| s.to_string());
+    }
+
+    // 路径6: user_results.result.core（无 core 前缀的情况）
+    if username.is_none() {
+        username = tweet_obj
+            .get("user_results")
+            .and_then(|ur| ur.get("result"))
+            .and_then(|r| r.get("core"))
+            .and_then(|c| c.get("screen_name"))
+            .and_then(|s| s.as_str())
+            .map(|s| s.to_string());
+    }
+
+    if display_name.is_none() {
+        display_name = tweet_obj
+            .get("user_results")
             .and_then(|ur| ur.get("result"))
             .and_then(|r| r.get("core"))
             .and_then(|c| c.get("name"))
@@ -314,6 +381,59 @@ mod tests {
         let (username, display_name) = extract_user_info(&tweet_obj).unwrap();
         assert_eq!(username, Some("test_user".to_string()));
         assert_eq!(display_name, Some("Test User".to_string()));
+    }
+
+    #[test]
+    fn test_extract_user_info_legacy_direct() {
+        // 测试路径4: legacy.screen_name（从 legacy 直接提取）
+        let tweet_obj = json!({
+            "legacy": {
+                "screen_name": "legacy_user",
+                "name": "Legacy User"
+            }
+        });
+        
+        let (username, display_name) = extract_user_info(&tweet_obj).unwrap();
+        assert_eq!(username, Some("legacy_user".to_string()));
+        assert_eq!(display_name, Some("Legacy User".to_string()));
+    }
+
+    #[test]
+    fn test_extract_user_info_user_results_no_core() {
+        // 测试路径5: user_results.result.legacy（无 core 前缀）
+        let tweet_obj = json!({
+            "user_results": {
+                "result": {
+                    "legacy": {
+                        "screen_name": "no_core_user",
+                        "name": "No Core User"
+                    }
+                }
+            }
+        });
+        
+        let (username, display_name) = extract_user_info(&tweet_obj).unwrap();
+        assert_eq!(username, Some("no_core_user".to_string()));
+        assert_eq!(display_name, Some("No Core User".to_string()));
+    }
+
+    #[test]
+    fn test_extract_user_info_user_results_core_no_core_prefix() {
+        // 测试路径6: user_results.result.core（无 core 前缀）
+        let tweet_obj = json!({
+            "user_results": {
+                "result": {
+                    "core": {
+                        "screen_name": "alt_core_user",
+                        "name": "Alt Core User"
+                    }
+                }
+            }
+        });
+        
+        let (username, display_name) = extract_user_info(&tweet_obj).unwrap();
+        assert_eq!(username, Some("alt_core_user".to_string()));
+        assert_eq!(display_name, Some("Alt Core User".to_string()));
     }
 
     #[test]

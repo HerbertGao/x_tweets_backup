@@ -141,15 +141,20 @@ impl Downloader {
         let tweet_timestamp = tweet_parser::extract_tweet_timestamp_seconds(&tweet_obj)?;
         debug_log!(self.config, "[DEBUG] 推文 {} 发布时间: {:?}", tweet_id, tweet_timestamp);
 
-        // 提取作者用户名（作为后备）
-        let tweet_author_username = tweet_parser::extract_username(&tweet_obj)?;
-        debug_log!(self.config, "[DEBUG] 推文 {} 作者: {:?}", tweet_id, tweet_author_username);
-
-        // 优先使用配置中的目标用户名，如果没有则使用推文作者的用户名
-        let username = if !self.config.target_username.is_empty() {
+        // 提取实际推文作者的用户名（从多个可能的路径中查找）
+        // 重要：使用实际作者用户名而不是 config.target_username，以确保与 MarkdownGenerator 生成的文件路径一致
+        // 这对于转推、引用推文和回复特别重要，因为实际作者可能与目标用户不同
+        let username = tweet_parser::extract_username(&tweet_obj)?;
+        debug_log!(self.config, "[DEBUG] 推文 {} 实际作者: {:?}", tweet_id, username);
+        
+        // 如果无法提取用户名，使用配置中的目标用户名作为后备
+        let username = if let Some(u) = username {
+            Some(u)
+        } else if !self.config.target_username.is_empty() {
+            debug_log!(self.config, "[DEBUG] 推文 {} 无法提取作者用户名，使用配置中的目标用户名: {}", tweet_id, self.config.target_username);
             Some(self.config.target_username.clone())
         } else {
-            tweet_author_username
+            None
         };
         debug_log!(self.config, "[DEBUG] 推文 {} 将使用用户名: {:?}", tweet_id, username);
 
@@ -230,6 +235,23 @@ impl Downloader {
                 }
             }
 
+            // 检查并清理可能残留的临时文件（来自之前失败的下载）
+            let temp_path = {
+                let mut temp = out_path.to_path_buf();
+                let file_name = temp.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown");
+                temp.set_file_name(format!("{}.tmp", file_name));
+                temp
+            };
+            if temp_path.exists() {
+                debug_log!(self.config, "发现残留的临时文件，将清理 ({}/{}): {:?}", 
+                    i + 1, total_media_count, temp_path);
+                if let Err(e) = fs::remove_file(&temp_path) {
+                    eprintln!("[WARNING] 无法删除残留的临时文件 {:?}: {}，将继续尝试下载", temp_path, e);
+                }
+            }
+
             debug_log!(self.config, "[DEBUG] 开始下载媒体文件: {}", media_url);
             match self.download_media(media_url, &out_path, i + 1, total_media_count).await {
                 Ok(true) => {
@@ -248,10 +270,13 @@ impl Downloader {
                     download_success_count += 1;
                 }
                 Ok(false) => {
-                    debug_log!(self.config, "[DEBUG] 下载失败: {}", media_url);
+                    eprintln!("[ERROR] 下载失败 ({}/{}): {}", i + 1, total_media_count, media_url);
+                    debug_log!(self.config, "[DEBUG] 下载失败详情: {}", media_url);
                 }
                 Err(e) => {
-                    debug_log!(self.config, "[DEBUG] 下载异常 ({}/{}): {} 错误: {}", i + 1, total_media_count, media_url, e);
+                    eprintln!("[ERROR] 下载异常 ({}/{}): {} 错误: {}", i + 1, total_media_count, media_url, e);
+                    debug_log!(self.config, "[DEBUG] 下载异常详情 ({}/{}): {} 错误: {}", i + 1, total_media_count, media_url, e);
+                    // download_media 已经清理了临时文件，这里不需要额外操作
                 }
             }
         }
@@ -300,15 +325,46 @@ impl Downloader {
             .unwrap()
             .progress_chars("#>-"));
 
-        debug_log!(self.config, "[DEBUG] 开始写入文件: {:?}", out_path);
-        let mut file = File::create(out_path).await?;
+        // 使用临时文件名下载，成功后再原子性地重命名为目标文件名
+        // 这样可以避免部分下载的文件被误判为已完成
+        let temp_path = {
+            let mut temp = out_path.to_path_buf();
+            let file_name = temp.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown");
+            temp.set_file_name(format!("{}.tmp", file_name));
+            temp
+        };
+        
+        debug_log!(self.config, "[DEBUG] 开始写入临时文件: {:?}", temp_path);
+        let mut file = File::create(&temp_path).await?;
         let mut stream = response.bytes_stream();
 
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk?;
-            file.write_all(&chunk).await?;
+        // 下载数据流，在错误时清理临时文件
+        while let Some(chunk_result) = stream.next().await {
+            let chunk = match chunk_result {
+                Ok(chunk) => chunk,
+                Err(e) => {
+                    // 流读取错误，清理临时文件并返回错误
+                    let _ = fs::remove_file(&temp_path);
+                    return Err(e.into());
+                }
+            };
+            
+            // 写入错误时，清理临时文件并返回错误
+            if let Err(e) = file.write_all(&chunk).await {
+                let _ = fs::remove_file(&temp_path);
+                return Err(e.into());
+            }
+            
             downloaded_size += chunk.len() as u64;
             pb.set_position(downloaded_size);
+        }
+
+        // 确保所有数据都写入磁盘
+        if let Err(e) = file.sync_all().await {
+            let _ = fs::remove_file(&temp_path);
+            return Err(e.into());
         }
 
         pb.finish_with_message("下载完成");
@@ -318,12 +374,38 @@ impl Downloader {
             if downloaded_size != expected_size {
                 eprintln!("[ERROR] 下载不完整 ({}/{}): {:?} (期望: {}, 实际: {})", 
                     current, total, out_path, expected_size, downloaded_size);
-                // 尝试删除不完整的文件，失败时记录警告但不影响流程
-                if let Err(e) = fs::remove_file(out_path) {
-                    eprintln!("[WARNING] 无法删除不完整的文件 {:?}: {}", out_path, e);
+                // 删除不完整的临时文件
+                if let Err(e) = fs::remove_file(&temp_path) {
+                    eprintln!("[WARNING] 无法删除不完整的临时文件 {:?}: {}", temp_path, e);
                 }
                 return Ok(false);
             }
+        }
+
+        // 验证临时文件的实际大小
+        if let Ok(metadata) = fs::metadata(&temp_path) {
+            if metadata.len() != downloaded_size {
+                eprintln!("[ERROR] 文件大小不匹配 ({}/{}): {:?} (期望: {}, 实际: {})", 
+                    current, total, temp_path, downloaded_size, metadata.len());
+                let _ = fs::remove_file(&temp_path);
+                return Ok(false);
+            }
+        }
+
+        // 原子性地将临时文件重命名为目标文件
+        // 如果目标文件已存在（可能是之前的部分下载），先删除它
+        if out_path.exists() {
+            if let Err(e) = fs::remove_file(out_path) {
+                eprintln!("[WARNING] 无法删除已存在的目标文件 {:?}: {}，将继续尝试重命名", out_path, e);
+            }
+        }
+
+        if let Err(e) = fs::rename(&temp_path, out_path) {
+            eprintln!("[ERROR] 无法将临时文件重命名为目标文件 ({}/{}): {:?} -> {:?}: {}", 
+                current, total, temp_path, out_path, e);
+            // 尝试清理临时文件
+            let _ = fs::remove_file(&temp_path);
+            return Err(e.into());
         }
 
         debug_log!(self.config, "下载成功 ({}/{}): {:?} (大小: {} 字节)", 
