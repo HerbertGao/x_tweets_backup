@@ -49,7 +49,7 @@ pub struct Config {
 
 impl Config {
     pub fn load() -> Result<Self> {
-        dotenv::dotenv().ok();
+        dotenvy::dotenv().ok();
 
         let private_tokens = Self::load_private_tokens("data/private_tokens.env")?;
 
@@ -98,14 +98,20 @@ impl Config {
                     .unwrap_or_else(|_| "V3vRrAJh5U6n9m1ZJ8xYQw".to_string()),
                 
                 // 性能配置
-                max_pages: env::var("MAX_PAGES")
-                    .unwrap_or_else(|_| "50".to_string())
-                    .parse()
-                    .unwrap_or(50),
-                download_timeout_secs: env::var("DOWNLOAD_TIMEOUT_SECS")
-                    .unwrap_or_else(|_| "30".to_string())
-                    .parse()
-                    .unwrap_or(30),
+                max_pages: {
+                    let value = env::var("MAX_PAGES").unwrap_or_else(|_| "50".to_string());
+                    value.parse().unwrap_or_else(|_| {
+                        eprintln!("[WARNING] 无效的 MAX_PAGES 值 '{}'，使用默认值 50", value);
+                        50
+                    })
+                },
+                download_timeout_secs: {
+                    let value = env::var("DOWNLOAD_TIMEOUT_SECS").unwrap_or_else(|_| "30".to_string());
+                    value.parse().unwrap_or_else(|_| {
+                        eprintln!("[WARNING] 无效的 DOWNLOAD_TIMEOUT_SECS 值 '{}'，使用默认值 30", value);
+                        30
+                    })
+                },
         })
     }
 

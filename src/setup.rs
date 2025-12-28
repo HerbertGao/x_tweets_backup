@@ -63,8 +63,10 @@ pub fn run_setup(args: SetupArgs) -> Result<()> {
 }
 
 fn parse_curl_command(curl_command: &str) -> Result<ParsedCurl> {
-    let header_regex = Regex::new(r#"-H\s+'([^']+)'"#)?;
-    let cookie_regex = Regex::new(r#"-b\s+'([^']+)'"#)?;
+    // 支持单引号和双引号：匹配 -H '...' 或 -H "..."
+    let header_regex = Regex::new(r#"-H\s+(?:'([^']+)'|"([^"]+)")"#)?;
+    // 支持单引号和双引号：匹配 -b '...' 或 -b "..."
+    let cookie_regex = Regex::new(r#"-b\s+(?:'([^']+)'|"([^"]+)")"#)?;
     let bearer_regex = Regex::new(r#"Bearer\s+(\S+)"#)?;
 
     let mut bearer_token = None;
@@ -74,7 +76,10 @@ fn parse_curl_command(curl_command: &str) -> Result<ParsedCurl> {
 
     // 解析headers
     for cap in header_regex.captures_iter(curl_command) {
-        let header = &cap[1];
+        // 匹配组1是单引号内容，匹配组2是双引号内容
+        let header = cap.get(1).or_else(|| cap.get(2))
+            .map(|m| m.as_str())
+            .ok_or_else(|| anyhow::anyhow!("无法解析header"))?;
         let header_lower = header.to_lowercase();
 
         if header_lower.starts_with("authorization:") {
@@ -82,17 +87,26 @@ fn parse_curl_command(curl_command: &str) -> Result<ParsedCurl> {
                 bearer_token = Some(bearer_cap[1].to_string());
             }
         } else if header_lower.starts_with("user-agent:") {
-            user_agent = Some(header.split_once(':').unwrap().1.trim().to_string());
+            if let Some((_, value)) = header.split_once(':') {
+                user_agent = Some(value.trim().to_string());
+            }
         } else if header_lower.starts_with("x-client-uuid:") {
-            x_client_uuid = Some(header.split_once(':').unwrap().1.trim().to_string());
+            if let Some((_, value)) = header.split_once(':') {
+                x_client_uuid = Some(value.trim().to_string());
+            }
         } else if header_lower.starts_with("x-client-transaction-id:") {
-            x_client_transaction_id = Some(header.split_once(':').unwrap().1.trim().to_string());
+            if let Some((_, value)) = header.split_once(':') {
+                x_client_transaction_id = Some(value.trim().to_string());
+            }
         }
     }
 
     // 解析cookie
     let cookie_str = if let Some(cap) = cookie_regex.captures(curl_command) {
-        cap[1].to_string()
+        // 匹配组1是单引号内容，匹配组2是双引号内容
+        cap.get(1).or_else(|| cap.get(2))
+            .map(|m| m.as_str().to_string())
+            .ok_or_else(|| anyhow::anyhow!("无法解析cookie参数"))?
     } else {
         return Err(anyhow::anyhow!("无法找到cookie参数"));
     };
@@ -328,6 +342,54 @@ curl 'https://x.com/i/api/graphql/test' \
             // 验证带引号的token被正确处理（检查bearer_token字段不为空）
             assert!(!parsed.bearer_token.is_empty() || parsed.bearer_token.contains("quoted_token"));
         }
+    }
+
+    #[test]
+    fn test_parse_curl_command_double_quotes() {
+        // 测试双引号的 curl 命令（Windows 浏览器常见格式）
+        let curl_command = r#"
+curl "https://x.com/i/api/graphql/test" \
+  -H "Authorization: Bearer test_bearer_token" \
+  -H "User-Agent: Mozilla/5.0" \
+  -H "X-Client-UUID: test-uuid" \
+  -H "X-Client-Transaction-ID: test-transaction" \
+  -b "twid=u%3D123; auth_token=test_auth; ct0=test_ct0; personalization_id=test_pid"
+"#;
+        
+        let result = parse_curl_command(curl_command).unwrap();
+        assert_eq!(result.bearer_token, "test_bearer_token");
+        assert_eq!(result.user_agent, Some("Mozilla/5.0".to_string()));
+        assert_eq!(result.x_client_uuid, Some("test-uuid".to_string()));
+        assert_eq!(result.x_client_transaction_id, Some("test-transaction".to_string()));
+        assert!(result.cookie_str.contains("twid"));
+    }
+
+    #[test]
+    fn test_parse_curl_command_mixed_quotes() {
+        // 测试混合使用单引号和双引号的情况
+        let curl_command = r#"
+curl 'https://x.com/i/api/graphql/test' \
+  -H "Authorization: Bearer test_bearer" \
+  -b 'auth_token=test; ct0=test; personalization_id=test; twid=123'
+"#;
+        
+        let result = parse_curl_command(curl_command).unwrap();
+        assert_eq!(result.bearer_token, "test_bearer");
+        assert!(result.cookie_str.contains("auth_token"));
+    }
+
+    #[test]
+    fn test_parse_curl_command_double_quotes_minimal() {
+        // 测试最小化的双引号 curl 命令
+        let curl_command = r#"
+curl "https://x.com/i/api/graphql/test" \
+  -H "Authorization: Bearer test_bearer" \
+  -b "auth_token=test_auth; ct0=test_ct0; personalization_id=test_pid; twid=123"
+"#;
+        
+        let result = parse_curl_command(curl_command).unwrap();
+        assert_eq!(result.bearer_token, "test_bearer");
+        assert!(result.cookie_str.contains("auth_token"));
     }
 
     #[test]

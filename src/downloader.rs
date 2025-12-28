@@ -125,6 +125,17 @@ impl Downloader {
         self.downloaded_ids.len()
     }
 
+    /// 从推文中下载媒体文件
+    /// 
+    /// # 参数
+    /// * `tweet` - 包含推文信息的 JSON 值
+    /// * `tweet_id` - 推文的唯一标识符
+    ///
+    /// # 返回值
+    /// * `Ok(Some(true))` - 媒体文件下载成功
+    /// * `Ok(Some(false))` - 下载失败或无需下载媒体
+    /// * `Ok(None)` - 推文中未找到媒体文件
+    /// * `Err(_)` - 下载过程中发生错误
     pub async fn call_media_downloader(&self, tweet: &Value, tweet_id: &str) -> Result<Option<bool>> {
         debug_log!(self.config, "[DEBUG] 开始处理推文: {}", tweet_id);
         

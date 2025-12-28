@@ -21,7 +21,7 @@ regex = "1.9"
 anyhow = "1.0"
 thiserror = "1.0"
 clap = { version = "4.0", features = ["derive"] }
-dotenv = "0.15"
+dotenvy = "0.15"
 futures-util = "0.3"
 indicatif = "0.17"
 urlencoding = "2.1"
