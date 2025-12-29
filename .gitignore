@@ -1,0 +1,39 @@
+# Rust
+/target/
+Cargo.lock
+
+# Environment files
+.env
+data/private_tokens.env
+
+# Sensitive files that may contain personal information
+curl_command.txt
+api_response.json
+
+# Downloaded files
+data/downloads/
+data/organized/
+data/downloaded_tweet_ids.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Coverage reports
+coverage/
+*.gcda
+*.gcno
+*.profdata
+llvm-cov-target/
+tarpaulin-report.html
+tarpaulin-report.xml
+lcov.info

@@ -1,0 +1,10 @@
+# 代码覆盖率目标配置
+# Coverage Target Configuration
+
+COVERAGE_TARGET=80
+
+# 说明：
+# - 行覆盖率 (Lines): 目标 >= 80%
+# - 函数覆盖率 (Functions): 目标 >= 80%
+# - 区域覆盖率 (Regions): 目标 >= 80%
+
