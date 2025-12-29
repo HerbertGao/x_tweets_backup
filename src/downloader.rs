@@ -228,6 +228,7 @@ impl Downloader {
         let mut download_success_count = 0;
         let total_media_count = media_urls.len();
         let mut skipped_count = 0;
+        let mut download_failed_count = 0;
 
         for (i, media_url) in media_urls.iter().enumerate() {
             debug_log!(
@@ -363,6 +364,7 @@ impl Downloader {
                         media_url
                     );
                     debug_log!(self.config, "[DEBUG] 下载失败详情: {}", media_url);
+                    download_failed_count += 1;
                 }
                 Err(e) => {
                     eprintln!(
@@ -380,12 +382,18 @@ impl Downloader {
                         media_url,
                         e
                     );
+                    download_failed_count += 1;
                     // download_media 已经清理了临时文件，这里不需要额外操作
                 }
             }
         }
 
-        if download_success_count > 0 {
+        // 只有当所有媒体文件都成功处理（已存在或新下载）时，才返回成功
+        // download_success_count 包括：已存在的文件（skipped_count） + 新下载成功的文件
+        // 只有当 download_success_count == total_media_count 时，所有文件都处理成功
+        let all_files_successful = download_success_count == total_media_count;
+        
+        if all_files_successful {
             if skipped_count > 0 {
                 debug_log!(
                     self.config,
@@ -405,7 +413,24 @@ impl Downloader {
             }
             Ok(Some(true))
         } else {
-            debug_log!(self.config, "Tweet {} 所有媒体文件下载失败", tweet_id);
+            // 部分文件失败，记录详细信息但不标记为完全成功
+            if download_failed_count > 0 {
+                debug_log!(
+                    self.config,
+                    "Tweet {} 部分下载失败: 成功 {}/{} 个文件（跳过 {} 个已存在，失败 {} 个），将允许重试",
+                    tweet_id,
+                    download_success_count,
+                    total_media_count,
+                    skipped_count,
+                    download_failed_count
+                );
+            } else {
+                debug_log!(
+                    self.config,
+                    "Tweet {} 所有媒体文件下载失败",
+                    tweet_id
+                );
+            }
             Ok(Some(false))
         }
     }

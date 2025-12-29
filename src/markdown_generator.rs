@@ -247,11 +247,21 @@ impl MarkdownGenerator {
         let original_filename = url_parts.last().map_or("unknown", |v| v);
 
         // 提取原始文件名（去掉查询参数）
-        let clean_filename = if let Some(query_start) = original_filename.find('?') {
+        let filename_without_query = if let Some(query_start) = original_filename.find('?') {
             &original_filename[..query_start]
         } else {
             original_filename
         };
+
+        // 使用与下载器相同的文件名清理逻辑，确保路径匹配
+        // 从URL路径提取文件名，并清理以防止路径遍历攻击
+        let clean_filename = filename_without_query
+            .replace("..", "") // 移除路径遍历序列
+            .replace("/", "_") // 替换斜杠
+            .replace("\\", "_") // 替换反斜杠
+            .chars()
+            .filter(|c| c.is_alphanumeric() || *c == '.' || *c == '-' || *c == '_')
+            .collect::<String>();
 
         // 生成本地文件名，使用与下载器相同的格式：[username][tweetid][origin_filename]
         // 重要：使用实际推文作者的用户名（tweet.username），与下载器保持一致
@@ -1002,6 +1012,52 @@ mod tests {
         assert!(path.contains("image.jpg"));
         // 不应该硬编码 ./downloads/
         assert!(!path.contains("./downloads/"));
+    }
+
+    #[test]
+    fn test_generate_local_media_path_sanitizes_special_characters() {
+        // 测试特殊字符的清理逻辑，确保与下载器一致
+        let config = create_test_config();
+        let generator = MarkdownGenerator::new(config);
+
+        let tweet = TweetContent {
+            id: "123456".to_string(),
+            text: "Test".to_string(),
+            created_at: None,
+            username: Some("test_user".to_string()),
+            display_name: None,
+            media_urls: vec![],
+            is_retweet: false,
+            retweeted_by: None,
+            reply_to: None,
+            quote_tweet: None,
+        };
+
+        // 测试包含特殊字符的URL：%20 (URL编码的空格), 括号, 冒号等
+        let path = generator.generate_local_media_path(
+            &tweet,
+            0,
+            "https://example.com/image%20file(1):test.jpg?param=value",
+        );
+        
+        // 应该包含用户名和ID
+        assert!(path.contains("test_user"));
+        assert!(path.contains("123456"));
+        
+        // 特殊字符应该被过滤掉，只保留字母数字、点、横线和下划线
+        // %20, 括号, 冒号应该被移除
+        assert!(!path.contains("%20"));
+        assert!(!path.contains("("));
+        assert!(!path.contains(")"));
+        assert!(!path.contains(":"));
+        assert!(!path.contains("param=value")); // 查询参数应该被移除
+        
+        // 应该包含清理后的文件名部分（只保留允许的字符）
+        // 文件名应该变成类似 "imagefile1test.jpg" 的形式
+        assert!(path.contains("image"));
+        assert!(path.contains("file"));
+        assert!(path.contains("test"));
+        assert!(path.contains("jpg"));
     }
 
     #[test]
