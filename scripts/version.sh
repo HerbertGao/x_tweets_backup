@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # 版本管理脚本
-# 用法: ./scripts/version.sh [major|minor|patch|build]
+# 用法: ./scripts/version.sh [major|minor|patch|build|版本号]
+# 示例: ./scripts/version.sh 1.2.3 或 ./scripts/version.sh patch
 
 set -e
 
@@ -16,31 +17,55 @@ get_current_version() {
     grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/'
 }
 
+# 验证版本号格式
+is_valid_version() {
+    local version=$1
+    # 匹配格式: x.y.z 或 x.y.z.w (x, y, z, w 都是数字)
+    if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
 # 更新版本号
 update_version() {
-    local version_type=$1
+    local version_input=$1
     local current_version=$(get_current_version)
     echo -e "${YELLOW}当前版本: ${current_version}${NC}"
-    IFS='.' read -ra VERSION_PARTS <<< "$current_version"
-    local major=${VERSION_PARTS[0]}
-    local minor=${VERSION_PARTS[1]}
-    local patch=${VERSION_PARTS[2]}
-    local build=${VERSION_PARTS[3]:-0}
-    case $version_type in
-        "major")
-            major=$((major + 1)); minor=0; patch=0; build=0;;
-        "minor")
-            minor=$((minor + 1)); patch=0; build=0;;
-        "patch")
-            patch=$((patch + 1)); build=0;;
-        "build")
-            build=$((build + 1));;
-        *)
-            echo -e "${RED}错误: 无效的版本类型. 使用: major|minor|patch|build${NC}"; exit 1;;
-    esac
-    local new_version="${major}.${minor}.${patch}"
-    if [ $build -gt 0 ]; then
-        new_version="${new_version}.${build}"
+    
+    local new_version
+    
+    # 检查是否是有效的版本号格式
+    if is_valid_version "$version_input"; then
+        # 直接使用提供的版本号
+        new_version="$version_input"
+        echo -e "${YELLOW}使用自定义版本号: ${new_version}${NC}"
+    else
+        # 使用递增逻辑
+        IFS='.' read -ra VERSION_PARTS <<< "$current_version"
+        local major=${VERSION_PARTS[0]}
+        local minor=${VERSION_PARTS[1]}
+        local patch=${VERSION_PARTS[2]}
+        local build=${VERSION_PARTS[3]:-0}
+        case $version_input in
+            "major")
+                major=$((major + 1)); minor=0; patch=0; build=0;;
+            "minor")
+                minor=$((minor + 1)); patch=0; build=0;;
+            "patch")
+                patch=$((patch + 1)); build=0;;
+            "build")
+                build=$((build + 1));;
+            *)
+                echo -e "${RED}错误: 无效的版本类型或版本号格式${NC}"
+                echo "使用: major|minor|patch|build 或版本号格式 (如: 1.2.3)"
+                exit 1;;
+        esac
+        new_version="${major}.${minor}.${patch}"
+        if [ $build -gt 0 ]; then
+            new_version="${new_version}.${build}"
+        fi
     fi
     echo -e "${YELLOW}新版本: ${new_version}${NC}"
     # 更新 Cargo.toml
@@ -81,11 +106,12 @@ show_version() {
 main() {
     if [ $# -eq 0 ]; then
         show_version
-        echo -e "${YELLOW}用法: $0 [major|minor|patch|build]${NC}"
-        echo "  major  - 主版本号 (1.0.0 -> 2.0.0)"
-        echo "  minor  - 次版本号 (1.0.0 -> 1.1.0)"
-        echo "  patch  - 补丁版本 (1.0.0 -> 1.0.1)"
-        echo "  build  - 构建版本 (1.0.0 -> 1.0.0.1)"
+        echo -e "${YELLOW}用法: $0 [major|minor|patch|build|版本号]${NC}"
+        echo "  major     - 主版本号 (1.0.0 -> 2.0.0)"
+        echo "  minor     - 次版本号 (1.0.0 -> 1.1.0)"
+        echo "  patch     - 补丁版本 (1.0.0 -> 1.0.1)"
+        echo "  build     - 构建版本 (1.0.0 -> 1.0.0.1)"
+        echo "  版本号    - 自定义版本号 (如: 1.2.3 或 1.2.3.4)"
         exit 0
     fi
     update_version $1

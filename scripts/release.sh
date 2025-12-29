@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # 发布脚本
-# 用法: ./scripts/release.sh [major|minor|patch|build]
+# 用法: ./scripts/release.sh [major|minor|patch|build|版本号]
+# 示例: ./scripts/release.sh 1.2.3 或 ./scripts/release.sh patch
 
 set -e
 
@@ -104,12 +105,13 @@ show_release_info() {
 # 主流程
 main() {
     if [ $# -eq 0 ]; then
-        echo -e "${RED}错误: 请指定版本类型${NC}"
-        echo "用法: $0 [major|minor|patch|build]"
-        echo "  major  - 主版本号 (1.0.0 -> 2.0.0)"
-        echo "  minor  - 次版本号 (1.0.0 -> 1.1.0)"
-        echo "  patch  - 补丁版本 (1.0.0 -> 1.0.1)"
-        echo "  build  - 构建版本 (1.0.0 -> 1.0.0.1)"
+        echo -e "${RED}错误: 请指定版本类型或版本号${NC}"
+        echo "用法: $0 [major|minor|patch|build|版本号]"
+        echo "  major     - 主版本号 (1.0.0 -> 2.0.0)"
+        echo "  minor     - 次版本号 (1.0.0 -> 1.1.0)"
+        echo "  patch     - 补丁版本 (1.0.0 -> 1.0.1)"
+        echo "  build     - 构建版本 (1.0.0 -> 1.0.0.1)"
+        echo "  版本号    - 自定义版本号 (如: 1.2.3 或 1.2.3.4)"
         exit 1
     fi
     local version_type=$1
