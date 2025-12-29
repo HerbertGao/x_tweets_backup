@@ -68,6 +68,15 @@ update_version() {
         fi
     fi
     echo -e "${YELLOW}新版本: ${new_version}${NC}"
+    
+    # 检查版本是否相同
+    if [ "$current_version" == "$new_version" ]; then
+        echo -e "${YELLOW}提示: 新版本号与当前版本号相同，无需更新文件${NC}"
+        echo -e "${YELLOW}Git 状态:${NC}"
+        git status --porcelain
+        return 0
+    fi
+    
     # 更新 Cargo.toml
     if [[ "$OSTYPE" == "darwin"* ]]; then
         sed -i '' "s/^version = \".*\"/version = \"${new_version}\"/" Cargo.toml

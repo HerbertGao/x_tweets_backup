@@ -67,6 +67,13 @@ commit_changes() {
     local version=$1
     local commit_message="chore: bump version to ${version}"
     echo -e "${BLUE}提交更改...${NC}"
+    
+    # 检查是否有未暂存的更改
+    if git diff-index --quiet HEAD --; then
+        echo -e "${YELLOW}提示: 没有需要提交的更改（版本号可能未变化）${NC}"
+        return 0
+    fi
+    
     git add .
     git commit -m "$commit_message"
     echo -e "${GREEN}✓ 更改已提交${NC}"
@@ -77,6 +84,13 @@ git_tag() {
     local version=$1
     local tag_name="v${version}"
     echo -e "${BLUE}创建标签 ${tag_name}...${NC}"
+    
+    # 检查标签是否已存在
+    if git rev-parse "$tag_name" >/dev/null 2>&1; then
+        echo -e "${YELLOW}提示: 标签 ${tag_name} 已存在，跳过创建${NC}"
+        return 0
+    fi
+    
     git tag "$tag_name"
     echo -e "${GREEN}✓ 标签已创建${NC}"
 }
@@ -86,9 +100,23 @@ push_to_remote() {
     local version=$1
     local tag_name="v${version}"
     echo -e "${BLUE}推送到远程仓库...${NC}"
-    git push origin master
-    git push origin "$tag_name"
-    echo -e "${GREEN}✓ 已推送到远程仓库${NC}"
+    
+    # 检查是否有本地提交需要推送
+    local has_commits=$(git rev-list origin/master..HEAD 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$has_commits" -gt 0 ]; then
+        git push origin master
+    else
+        echo -e "${YELLOW}提示: 没有新的提交需要推送${NC}"
+    fi
+    
+    # 检查标签是否已存在于远程
+    if git ls-remote --tags origin | grep -q "refs/tags/${tag_name}$"; then
+        echo -e "${YELLOW}提示: 标签 ${tag_name} 已存在于远程，跳过推送${NC}"
+    else
+        git push origin "$tag_name"
+    fi
+    
+    echo -e "${GREEN}✓ 推送操作完成${NC}"
 }
 
 # 显示发布信息
