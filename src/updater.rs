@@ -1,5 +1,6 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use reqwest::Client;
+use semver::Version;
 use serde_json::Value;
 
 pub struct Updater {
@@ -20,7 +21,13 @@ impl Updater {
         let latest_version = self.get_latest_version().await?;
         let current_version = env!("CARGO_PKG_VERSION");
 
-        if latest_version == current_version {
+        // 使用语义版本比较而不是字符串比较
+        let latest = Version::parse(&latest_version)
+            .context(format!("无法解析最新版本: {}", latest_version))?;
+        let current = Version::parse(current_version)
+            .context(format!("无法解析当前版本: {}", current_version))?;
+
+        if latest <= current {
             println!("当前已是最新版本: {}", current_version);
             return Ok(());
         }
@@ -82,13 +89,18 @@ mod tests {
 
     #[test]
     fn test_updater_version_comparison_logic() {
-        // 测试版本比较逻辑（不涉及网络请求）
-        let current = "1.0.0";
-        let latest = "1.0.0";
-        assert_eq!(current == latest, true);
+        // 测试版本比较逻辑（使用语义版本比较）
+        let current = Version::parse("1.0.0").unwrap();
+        let latest = Version::parse("1.0.0").unwrap();
+        assert_eq!(latest <= current, true);
 
-        let latest_new = "1.0.1";
-        assert_eq!(current == latest_new, false);
+        let latest_new = Version::parse("1.0.1").unwrap();
+        assert_eq!(latest_new <= current, false);
+
+        // 测试边界情况：1.0.10 应该大于 1.0.9
+        let v1_0_9 = Version::parse("1.0.9").unwrap();
+        let v1_0_10 = Version::parse("1.0.10").unwrap();
+        assert!(v1_0_10 > v1_0_9, "1.0.10 应该大于 1.0.9");
     }
 
     #[test]
