@@ -168,7 +168,7 @@ impl MarkdownGenerator {
             content.push_str("**媒体文件**:\n\n");
             for (i, media_url) in tweet.media_urls.iter().enumerate() {
                 // 尝试生成本地文件路径
-                let local_path = self.generate_local_media_path(&tweet, i, media_url);
+                let local_path = self.generate_local_media_path(tweet, i, media_url);
 
                 // HTML转义辅助函数
                 let escape_html = |s: &str| -> String {
@@ -194,17 +194,16 @@ impl MarkdownGenerator {
 
                     // 使用HTML video标签嵌入视频（转义用户提供的内容）
                     content.push_str(&format!("🎥 **视频 {}**:\n", i + 1));
-                    content.push_str(&format!(
-                        "<video controls width=\"100%\" style=\"max-width: 600px;\">\n"
-                    ));
+                    content
+                        .push_str("<video controls width=\"100%\" style=\"max-width: 600px;\">\n");
                     content.push_str(&format!(
                         "  <source src=\"{}\" type=\"{}\">\n",
                         escape_html(&local_path),
                         escape_html(mime_type)
                     ));
-                    content.push_str(&format!("  您的浏览器不支持视频播放。\n"));
-                    content.push_str(&format!("</video>\n"));
-                    content.push_str(&format!("<br/>\n"));
+                    content.push_str("  您的浏览器不支持视频播放。\n");
+                    content.push_str("</video>\n");
+                    content.push_str("<br/>\n");
                     content.push_str(&format!(
                         "<small>📎 [下载视频]({}) | [原始链接]({})</small>\n\n",
                         escape_html(&local_path),
@@ -214,7 +213,7 @@ impl MarkdownGenerator {
                     // 使用HTML img标签嵌入图片（转义用户提供的内容）
                     content.push_str(&format!("🖼️ **图片 {}**:\n", i + 1));
                     content.push_str(&format!("<img src=\"{}\" alt=\"推文图片 {}\" style=\"max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);\">\n", escape_html(&local_path), i + 1));
-                    content.push_str(&format!("<br/>\n"));
+                    content.push_str("<br/>\n");
                     content.push_str(&format!(
                         "<small>📎 [查看原图]({}) | [原始链接]({})</small>\n\n",
                         escape_html(&local_path),
@@ -1039,11 +1038,11 @@ mod tests {
             0,
             "https://example.com/image%20file(1):test.jpg?param=value",
         );
-        
+
         // 应该包含用户名和ID
         assert!(path.contains("test_user"));
         assert!(path.contains("123456"));
-        
+
         // 特殊字符应该被过滤掉，只保留字母数字、点、横线和下划线
         // %20, 括号, 冒号应该被移除
         assert!(!path.contains("%20"));
@@ -1051,7 +1050,7 @@ mod tests {
         assert!(!path.contains(")"));
         assert!(!path.contains(":"));
         assert!(!path.contains("param=value")); // 查询参数应该被移除
-        
+
         // 应该包含清理后的文件名部分（只保留允许的字符）
         // 文件名应该变成类似 "imagefile1test.jpg" 的形式
         assert!(path.contains("image"));

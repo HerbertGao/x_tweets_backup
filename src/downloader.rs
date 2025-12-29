@@ -56,7 +56,7 @@ impl Downloader {
     /// 只允许：
     /// - 精确匹配：twimg.com 或 twitter.com
     /// - 子域名：*.twimg.com 或 *.twitter.com
-    /// 不允许：eviltwimg.com 或 malicioustwitter.com 等恶意相似域名
+    ///   不允许：eviltwimg.com 或 malicioustwitter.com 等恶意相似域名
     fn is_valid_twitter_domain(host: &str) -> bool {
         // 使用 url crate 的 Host 类型解析域名，确保格式正确
         let parsed_host = match url::Host::parse(host) {
@@ -158,7 +158,7 @@ impl Downloader {
         };
 
         // 提取推文发布时间
-        let tweet_timestamp = tweet_parser::extract_tweet_timestamp_seconds(&tweet_obj)?;
+        let tweet_timestamp = tweet_parser::extract_tweet_timestamp_seconds(tweet_obj)?;
         debug_log!(
             self.config,
             "[DEBUG] 推文 {} 发布时间: {:?}",
@@ -169,7 +169,7 @@ impl Downloader {
         // 提取实际推文作者的用户名（从多个可能的路径中查找）
         // 重要：使用实际作者用户名而不是 config.target_username，以确保与 MarkdownGenerator 生成的文件路径一致
         // 这对于转推、引用推文和回复特别重要，因为实际作者可能与目标用户不同
-        let username = tweet_parser::extract_username(&tweet_obj)?;
+        let username = tweet_parser::extract_username(tweet_obj)?;
         debug_log!(
             self.config,
             "[DEBUG] 推文 {} 实际作者: {:?}",
@@ -199,7 +199,7 @@ impl Downloader {
         );
 
         // 提取媒体列表
-        let media_urls = tweet_parser::extract_media_urls(&tweet_obj)?;
+        let media_urls = tweet_parser::extract_media_urls(tweet_obj)?;
         if media_urls.is_empty() {
             debug_log!(self.config, "[DEBUG] 推文 {} 没有媒体文件", tweet_id);
             return Ok(None);
@@ -261,7 +261,7 @@ impl Downloader {
             // 从URL路径提取文件名，并清理以防止路径遍历攻击
             let original_name = parsed_url
                 .path_segments()
-                .and_then(|segments| segments.last())
+                .and_then(|mut segments| segments.next_back())
                 .unwrap_or("unknown")
                 .replace("..", "") // 移除路径遍历序列
                 .replace("/", "_") // 替换斜杠
@@ -395,7 +395,7 @@ impl Downloader {
         // download_success_count 包括：已存在的文件（skipped_count） + 新下载成功的文件
         // 只有当 download_success_count == total_media_count 时，所有文件都处理成功
         let all_files_successful = download_success_count == total_media_count;
-        
+
         if all_files_successful {
             if skipped_count > 0 {
                 debug_log!(
@@ -441,11 +441,7 @@ impl Downloader {
                 );
             } else {
                 // 所有文件都失败（不应该发生，因为至少应该有域名验证跳过）
-                debug_log!(
-                    self.config,
-                    "Tweet {} 所有媒体文件下载失败",
-                    tweet_id
-                );
+                debug_log!(self.config, "Tweet {} 所有媒体文件下载失败", tweet_id);
             }
             Ok(Some(false))
         }
