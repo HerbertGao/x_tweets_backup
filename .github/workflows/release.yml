@@ -29,8 +29,16 @@ jobs:
 
       - name: Security audit
         run: |
-          cargo install cargo-audit || true
-          cargo audit || echo "cargo-audit not available, skipping security audit"
+          # 尝试安装 cargo-audit（如果已安装则跳过）
+          cargo install cargo-audit 2>/dev/null || true
+          # 检查 cargo audit 是否可用
+          if command -v cargo-audit >/dev/null 2>&1 || cargo audit --help >/dev/null 2>&1; then
+            # cargo-audit 可用，运行审计（如果发现漏洞会失败构建）
+            cargo audit
+          else
+            # cargo-audit 不可用，记录警告但继续（不失败构建）
+            echo "Warning: cargo-audit not available, skipping security audit"
+          fi
 
   build:
     needs: test

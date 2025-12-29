@@ -531,6 +531,10 @@ impl Downloader {
             return Err(e.into());
         }
 
+        // 在 Windows 上，必须显式关闭文件句柄才能重命名文件
+        // 显式 drop 文件句柄，确保在重命名之前文件已关闭
+        drop(file);
+
         pb.finish_with_message("下载完成");
 
         // 验证下载完整性
