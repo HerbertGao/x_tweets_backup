@@ -227,7 +227,8 @@ impl Downloader {
 
         let mut download_success_count = 0;
         let total_media_count = media_urls.len();
-        let mut skipped_count = 0;
+        let mut skipped_count = 0; // 已存在的文件
+        let mut skipped_domain_validation_count = 0; // 因域名验证而跳过的 URL
         let mut download_failed_count = 0;
 
         for (i, media_url) in media_urls.iter().enumerate() {
@@ -248,10 +249,12 @@ impl Downloader {
                         "[WARNING] 跳过可疑的媒体 URL (非 Twitter 域名): {}",
                         media_url
                     );
+                    skipped_domain_validation_count += 1;
                     continue;
                 }
             } else {
                 eprintln!("[WARNING] 跳过无效的媒体 URL (无域名): {}", media_url);
+                skipped_domain_validation_count += 1;
                 continue;
             }
 
@@ -417,14 +420,27 @@ impl Downloader {
             if download_failed_count > 0 {
                 debug_log!(
                     self.config,
-                    "Tweet {} 部分下载失败: 成功 {}/{} 个文件（跳过 {} 个已存在，失败 {} 个），将允许重试",
+                    "Tweet {} 部分下载失败: 成功 {}/{} 个文件（跳过 {} 个已存在，跳过 {} 个域名验证，失败 {} 个），将允许重试",
                     tweet_id,
                     download_success_count,
                     total_media_count,
                     skipped_count,
+                    skipped_domain_validation_count,
                     download_failed_count
                 );
+            } else if skipped_domain_validation_count > 0 {
+                // 有文件因域名验证被跳过，但没有实际下载失败
+                debug_log!(
+                    self.config,
+                    "Tweet {} 部分文件跳过: 成功 {}/{} 个文件（跳过 {} 个已存在，跳过 {} 个域名验证），将允许重试",
+                    tweet_id,
+                    download_success_count,
+                    total_media_count,
+                    skipped_count,
+                    skipped_domain_validation_count
+                );
             } else {
+                // 所有文件都失败（不应该发生，因为至少应该有域名验证跳过）
                 debug_log!(
                     self.config,
                     "Tweet {} 所有媒体文件下载失败",
