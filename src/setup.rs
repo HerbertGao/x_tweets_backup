@@ -36,6 +36,18 @@ struct ParsedCookies {
     personalization_id: String,
 }
 
+#[derive(Debug)]
+struct TokenConfig {
+    user_id: String,
+    bearer_token: String,
+    auth_token: String,
+    ct0: String,
+    personalization_id: String,
+    user_agent: String,
+    x_client_uuid: String,
+    x_client_transaction_id: String,
+}
+
 pub fn run_setup(args: SetupArgs) -> Result<()> {
     // 读取curl命令文件
     let curl_command = fs::read_to_string(&args.curl_file)
@@ -46,17 +58,17 @@ pub fn run_setup(args: SetupArgs) -> Result<()> {
     let cookies = parse_cookies(&parsed.cookie_str)?;
 
     // 保存私有令牌
-    save_private_tokens(
-        &cookies.twid,
-        &parsed.bearer_token,
-        &cookies.auth_token,
-        &cookies.ct0,
-        &cookies.personalization_id,
-        parsed.user_agent.as_deref().unwrap_or(""),
-        parsed.x_client_uuid.as_deref().unwrap_or(""),
-        parsed.x_client_transaction_id.as_deref().unwrap_or(""),
-        "data/private_tokens.env",
-    )?;
+    let token_config = TokenConfig {
+        user_id: cookies.twid,
+        bearer_token: parsed.bearer_token,
+        auth_token: cookies.auth_token,
+        ct0: cookies.ct0,
+        personalization_id: cookies.personalization_id,
+        user_agent: parsed.user_agent.unwrap_or_default(),
+        x_client_uuid: parsed.x_client_uuid.unwrap_or_default(),
+        x_client_transaction_id: parsed.x_client_transaction_id.unwrap_or_default(),
+    };
+    save_private_tokens(&token_config, "data/private_tokens.env")?;
 
     println!("初始化完成。");
     Ok(())
@@ -152,14 +164,14 @@ fn parse_cookies(cookie_str: &str) -> Result<ParsedCookies> {
         // 直接使用原始值，不进行URL解码
         match *key {
             "twid" => {
-                result.twid = if value.starts_with("u=") {
-                    value[2..].to_string()
+                result.twid = if let Some(stripped) = value.strip_prefix("u=") {
+                    stripped.to_string()
                 } else {
                     value.to_string()
                 };
                 // 手动处理URL编码的u=前缀
-                if result.twid.starts_with("u%3D") {
-                    result.twid = result.twid[4..].to_string();
+                if let Some(stripped) = result.twid.strip_prefix("u%3D") {
+                    result.twid = stripped.to_string();
                 }
             }
             "auth_token" => result.auth_token = value.to_string(),
@@ -172,17 +184,7 @@ fn parse_cookies(cookie_str: &str) -> Result<ParsedCookies> {
     Ok(result)
 }
 
-fn save_private_tokens(
-    user_id: &str,
-    bearer_token: &str,
-    auth_token: &str,
-    ct0: &str,
-    personalization_id: &str,
-    user_agent: &str,
-    x_client_uuid: &str,
-    x_client_transaction_id: &str,
-    filename: &str,
-) -> Result<()> {
+fn save_private_tokens(config: &TokenConfig, filename: &str) -> Result<()> {
     // 确保目录存在
     if let Some(parent) = Path::new(filename).parent() {
         fs::create_dir_all(parent)?;
@@ -190,7 +192,7 @@ fn save_private_tokens(
 
     let content = format!(
         "USER_ID={}\nBEARER_TOKEN={}\nAUTH_TOKEN={}\nCT0={}\nPERSONALIZATION_ID={}\nUSER_AGENT={}\nX_CLIENT_UUID={}\nX_CLIENT_TRANSACTION_ID={}\n",
-        user_id, bearer_token, auth_token, ct0, personalization_id, user_agent, x_client_uuid, x_client_transaction_id
+        config.user_id, config.bearer_token, config.auth_token, config.ct0, config.personalization_id, config.user_agent, config.x_client_uuid, config.x_client_transaction_id
     );
 
     // 使用 OpenOptions 设置文件权限，确保敏感文件只有所有者可读写
@@ -314,18 +316,17 @@ curl 'https://x.com/i/api/graphql/test' \
         let temp_dir = TempDir::new().unwrap();
         let token_file = temp_dir.path().join("tokens.env");
 
-        save_private_tokens(
-            "user123",
-            "bearer_token",
-            "auth_token",
-            "ct0_token",
-            "pid_value",
-            "Mozilla/5.0",
-            "uuid_value",
-            "transaction_id",
-            token_file.to_str().unwrap(),
-        )
-        .unwrap();
+        let token_config = TokenConfig {
+            user_id: "user123".to_string(),
+            bearer_token: "bearer_token".to_string(),
+            auth_token: "auth_token".to_string(),
+            ct0: "ct0_token".to_string(),
+            personalization_id: "pid_value".to_string(),
+            user_agent: "Mozilla/5.0".to_string(),
+            x_client_uuid: "uuid_value".to_string(),
+            x_client_transaction_id: "transaction_id".to_string(),
+        };
+        save_private_tokens(&token_config, token_file.to_str().unwrap()).unwrap();
 
         let content = std::fs::read_to_string(&token_file).unwrap();
         assert!(content.contains("USER_ID=user123"));

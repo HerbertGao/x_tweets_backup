@@ -74,6 +74,11 @@ update_version() {
         echo -e "${YELLOW}提示: 新版本号与当前版本号相同，无需更新文件${NC}"
         echo -e "${YELLOW}Git 状态:${NC}"
         git status --porcelain
+        echo -e "${GREEN}版本检查完成！${NC}"
+        echo -e "${YELLOW}下一步操作建议:${NC}"
+        echo "1. 测试代码: cargo check && cargo test"
+        echo "2. 如需创建标签: git tag v${new_version}"
+        echo "3. 如需推送标签: git push origin v${new_version}"
         return 0
     fi
     
