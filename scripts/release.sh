@@ -87,8 +87,9 @@ git_tag() {
     
     # 检查标签是否已存在
     if git rev-parse "$tag_name" >/dev/null 2>&1; then
-        echo -e "${YELLOW}提示: 标签 ${tag_name} 已存在，跳过创建${NC}"
-        return 0
+        echo -e "${YELLOW}提示: 标签 ${tag_name} 已存在，删除本地标签并重新创建${NC}"
+        git tag -d "$tag_name"
+        echo -e "${GREEN}✓ 已删除本地标签${NC}"
     fi
     
     git tag "$tag_name"
@@ -101,20 +102,39 @@ push_to_remote() {
     local tag_name="v${version}"
     echo -e "${BLUE}推送到远程仓库...${NC}"
     
-    # 检查是否有本地提交需要推送
-    local has_commits=$(git rev-list origin/master..HEAD 2>/dev/null | wc -l | tr -d ' ')
-    if [ "$has_commits" -gt 0 ]; then
-        git push origin master
+    # 获取远程更新信息（不合并）
+    git fetch origin master --quiet 2>/dev/null || true
+    
+    # 检查本地分支是否领先于远程分支
+    local local_commit=$(git rev-parse HEAD 2>/dev/null)
+    local remote_commit=$(git rev-parse origin/master 2>/dev/null || echo "")
+    
+    if [ -z "$remote_commit" ]; then
+        echo -e "${YELLOW}提示: 无法获取远程分支信息，跳过推送 master${NC}"
+    elif [ "$local_commit" != "$remote_commit" ]; then
+        # 检查本地是否有远程没有的提交
+        local ahead_count=$(git rev-list origin/master..HEAD 2>/dev/null | wc -l | tr -d ' ')
+        if [ "$ahead_count" -gt 0 ]; then
+            echo -e "${BLUE}推送 master 分支（领先 ${ahead_count} 个提交）...${NC}"
+            git push origin master
+        else
+            echo -e "${YELLOW}提示: 本地分支落后于远程分支，跳过推送 master${NC}"
+            echo -e "${YELLOW}提示: 如需同步，请先执行: git pull origin master${NC}"
+        fi
     else
-        echo -e "${YELLOW}提示: 没有新的提交需要推送${NC}"
+        echo -e "${YELLOW}提示: 本地分支与远程分支同步，无需推送 master${NC}"
     fi
     
     # 检查标签是否已存在于远程
     if git ls-remote --tags origin | grep -q "refs/tags/${tag_name}$"; then
-        echo -e "${YELLOW}提示: 标签 ${tag_name} 已存在于远程，跳过推送${NC}"
-    else
-        git push origin "$tag_name"
+        echo -e "${YELLOW}提示: 标签 ${tag_name} 已存在于远程，删除远程标签并重新推送${NC}"
+        git push origin ":refs/tags/${tag_name}" 2>/dev/null || true
+        echo -e "${GREEN}✓ 已删除远程标签${NC}"
     fi
+    
+    # 推送标签
+    echo -e "${BLUE}推送标签 ${tag_name}...${NC}"
+    git push origin "$tag_name"
     
     echo -e "${GREEN}✓ 推送操作完成${NC}"
 }
